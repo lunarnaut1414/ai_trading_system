@@ -1,50 +1,109 @@
-# ===== CORE TRADING LIBRARIES =====
-alpaca-trade-api==3.0.2
-yfinance==0.2.22
+# ==============================================================================
+# AI Trading System Dependencies - Updated Based on Implementation
+# ==============================================================================
 
-# ===== AI/ML LIBRARIES =====
-anthropic==0.7.0
+# ===== CORE INFRASTRUCTURE (REQUIRED) =====
+# Claude AI Integration - Updated to latest stable version
+anthropic>=0.25.0
 
-# ===== WEB FRAMEWORK =====
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+# Environment and Configuration Management - ESSENTIAL
+python-dotenv>=1.0.0
 
-# ===== DATABASE =====
-sqlalchemy==2.0.23
-alembic==1.12.1
+# Data Validation and Serialization
+pydantic>=2.0.0
 
-# ===== DATA PROCESSING =====
-pandas==2.1.3
-numpy==1.25.2
-scipy==1.11.4
-matplotlib==3.8.2
-seaborn==0.13.0
+# System Monitoring and Performance Tracking
+psutil>=5.9.0
 
-# ===== ASYNC SUPPORT =====
-# Note: aiohttp version constrained by alpaca-trade-api
-aiohttp==3.8.2
-aiofiles==23.2.0
+# ===== DATA PROVIDER (ALPACA INTEGRATION) =====
+# Alpaca Trading API - Primary broker integration
+alpaca-trade-api>=3.0.0
 
-# ===== UTILITIES =====
-python-dotenv==1.0.0
-schedule==1.2.0
-requests==2.31.0
-pydantic==2.5.0
-python-dateutil==2.8.2
+# Data Analysis and Manipulation
+pandas>=2.0.0
+numpy>=1.24.0
 
-# ===== DEVELOPMENT TOOLS =====
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
-black==23.11.0
-flake8==6.1.0
-mypy==1.7.1
+# Additional Market Data (backup/supplementary)
+yfinance>=0.2.0
 
-# ===== MONITORING =====
-prometheus-client==0.19.0
-structlog==23.2.0
+# ===== DATABASE AND PERSISTENCE =====
+# Database ORM and Migrations
+sqlalchemy>=2.0.0
+alembic>=1.12.0
 
 # ===== TECHNICAL ANALYSIS =====
-# Note: TA-Lib requires special installation on macOS - see installation instructions
-# Alternative: pandas-ta (easier to install)
-pandas-ta==0.3.14b
+# Technical Analysis Library (may require separate installation)
+ta-lib>=0.4.0
+
+# Alternative Technical Analysis (easier to install)
+pandas-ta>=0.3.0
+
+# Additional Technical Indicators
+numpy>=1.24.0
+
+# ===== ASYNC AND NETWORKING =====
+# HTTP Client for API calls
+aiohttp>=3.8.0
+requests>=2.31.0
+
+# MQTT for real-time data (optional)
+asyncio-mqtt>=0.13.0
+
+# ===== UTILITIES AND SCHEDULING =====
+# Task Scheduling
+schedule>=1.2.0
+
+# Date/Time Utilities
+python-dateutil>=2.8.0
+
+# Logging Enhancements
+colorlog>=6.7.0
+
+# ===== TESTING FRAMEWORK =====
+# Core Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Test Coverage
+pytest-cov>=4.1.0
+
+# Mock/Patch for Testing
+pytest-mock>=3.11.0
+
+# ===== DEVELOPMENT TOOLS (OPTIONAL) =====
+# Interactive Development
+jupyter>=1.0.0
+ipython>=8.0.0
+
+# Data Visualization
+matplotlib>=3.7.0
+plotly>=5.17.0
+seaborn>=0.12.0
+
+# Code Quality
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.5.0
+
+# ===== FINANCIAL DATA ENHANCEMENTS (OPTIONAL) =====
+# Additional Market Data Sources
+alpha-vantage>=2.3.0
+quandl>=3.7.0
+
+# Financial Calculations
+QuantLib-Python>=1.31
+
+# Risk Management
+scipy>=1.11.0
+
+# ===== NOTIFICATIONS (FUTURE) =====
+# Email Support
+smtplib  # Built into Python
+email-validator>=2.0.0
+
+# Future: Bluesky Social Integration
+# atproto>=0.0.1  # Placeholder - to be added when available
+
+# ===== PERFORMANCE AND OPTIMIZATION =====
+# Numerical Computing Acceleration
+numba>=0.57.0

@@ -1,10 +1,16 @@
-# ===== ENVIRONMENT & SECRETS =====
+# ===== ENVIRONMENT & SECRETS (CRITICAL - NEVER COMMIT) =====
 .env
+.env.*
+*.env
 .env.local
 .env.production
 .env.staging
+.env.development
 *.key
 *.pem
+secrets/
+credentials/
+api_keys.txt
 
 # ===== PYTHON =====
 __pycache__/
@@ -24,6 +30,8 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -34,6 +42,9 @@ venv/
 env/
 ENV/
 .venv/
+.virtualenv/
+python_env/
+trading_env/
 
 # ===== IDE & EDITORS =====
 .vscode/
@@ -41,16 +52,27 @@ ENV/
 *.swp
 *.swo
 *~
+.spyderproject
+.spyproject
+*.sublime-project
+*.sublime-workspace
 
 # ===== LOGS =====
-logs/*.log
+logs/
 *.log
+log_*.txt
+*.log.*
+trading_logs/
+execution_logs/
 
 # ===== DATABASE =====
 *.db
 *.sqlite
 *.sqlite3
 database/
+db_backup/
+trading_system.db
+*.db-journal
 
 # ===== CACHE =====
 .cache/
@@ -58,13 +80,10 @@ database/
 .mypy_cache/
 .coverage
 htmlcov/
+.tox/
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
 
-# ===== OS GENERATED =====
-.DS_Store
-Thumbs.db
-
-# ===== TRADING SPECIFIC =====
-backtest_results/
-trade_logs/
-performance_reports/
-market_data_cache/
+# ===== OS GENERATED

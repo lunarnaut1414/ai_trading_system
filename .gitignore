@@ -86,4 +86,4 @@ coverage.xml
 *.cover
 .hypothesis/
 
-# ===== OS GENERATED
+# ===== OS GENERATED.DS_Store

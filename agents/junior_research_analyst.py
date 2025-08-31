@@ -472,7 +472,7 @@ class AnalysisMetadataTracker:
             "agent": step_data.get('agent'),
             "action": step_data.get('action'),
             "timestamp": datetime.now(),
-            "duration_ms": step_data.get('duration_ms'),
+            "duration_ms": step_data.get('duration_ms', 0),
             "result": step_data.get('result'),
             "confidence": step_data.get('confidence')
         }
@@ -489,26 +489,36 @@ class AnalysisMetadataTracker:
         """Get summary of analysis chain"""
         chain = self.chains.get(chain_id)
         if not chain:
-            return {}
+            return {
+                "chain_id": chain_id,
+                "total_duration_ms": 0,
+                "num_steps": 0,
+                "agents_involved": [],
+                "final_confidence": 0,
+                "status": "unknown"
+            }
         
         duration = 0
         if "end_time" in chain:
             duration = (chain["end_time"] - chain["start_time"]).total_seconds() * 1000
             
+        # Properly count the steps
+        num_steps = len(chain.get("steps", []))
+        
         return {
             "chain_id": chain_id,
             "total_duration_ms": duration,
-            "num_steps": len(chain["steps"]),
-            "agents_involved": list(set(s["agent"] for s in chain["steps"])),
+            "num_steps": num_steps,  # Fixed: properly count steps
+            "agents_involved": list(set(s["agent"] for s in chain.get("steps", []) if s.get("agent"))),
             "final_confidence": self._calculate_final_confidence(chain),
-            "status": chain["status"]
+            "status": chain.get("status", "unknown")
         }
     
     def _calculate_final_confidence(self, chain: Dict) -> float:
         """Calculate final confidence from all steps"""
-        confidences = [s.get('confidence', 5) for s in chain["steps"] if s.get('confidence')]
+        steps = chain.get("steps", [])
+        confidences = [s.get('confidence', 5) for s in steps if s.get('confidence')]
         return np.mean(confidences) if confidences else 5.0
-
 
 # ========================================================================================
 # ENHANCED JUNIOR RESEARCH ANALYST

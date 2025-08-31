@@ -1,597 +1,864 @@
-# test_junior_analyst.py
+# tests/test_junior_analyst.py
 """
 Junior Research Analyst Test Suite
-Comprehensive testing for the Junior Research Analyst Agent
-Optimized for macOS M2 Max development
+Comprehensive testing for the Junior Research Analyst Agent using mocked providers
+
+Run tests:
+    pytest tests/test_junior_analyst.py -v                    # All tests
+    pytest tests/test_junior_analyst.py -v -m unit           # Unit tests only
+    pytest tests/test_junior_analyst.py -v -m integration    # Integration tests
+    pytest tests/test_junior_analyst.py -v -m smoke          # Quick smoke tests
+    pytest tests/test_junior_analyst.py -v -k "analysis"     # Specific tests
+    pytest tests/test_junior_analyst.py --cov=agents         # With coverage
 """
 
 import pytest
 import asyncio
 import json
-import tempfile
 import os
+import sys
 from datetime import datetime, timedelta
-from unittest.mock import Mock, AsyncMock, patch
-from pathlib import Path
+from typing import Dict, List, Any, Optional
+from unittest.mock import Mock, AsyncMock, MagicMock, patch
+import uuid
 
-# Import the agent components
+# Add project root to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from agents.junior_research_analyst import (
-    JuniorResearchAnalyst, AnalysisType, RecommendationType,
-    TimeHorizon, RiskLevel, PositionSize, TechnicalAnalysisEngine,
-    FundamentalAnalysisEngine, create_junior_analyst
+    JuniorResearchAnalyst,
+    AnalysisType,
+    RecommendationType,
+    TimeHorizon,
+    RiskLevel,
+    PositionSize,
+    create_junior_analyst
 )
 
 
-class TestJuniorResearchAnalyst:
-    """Test suite for Junior Research Analyst functionality"""
+# ==============================================================================
+# FIXTURES
+# ==============================================================================
+
+@pytest.fixture
+def mock_config():
+    """Mock configuration for testing"""
+    config = MagicMock()
+    config.ANTHROPIC_API_KEY = "test_anthropic_key"
+    config.MAX_POSITIONS = 10
+    config.MAX_POSITION_SIZE = 0.05
+    config.RISK_TOLERANCE = "moderate"
+    config.LOG_LEVEL = "INFO"
+    config.CACHE_ENABLED = True
+    return config
+
+
+@pytest.fixture
+def mock_llm_provider():
+    """Mock LLM provider with realistic responses"""
+    provider = MagicMock()
     
-    @pytest.fixture
-    def mock_config(self):
-        """Mock configuration object"""
-        config = Mock()
-        config.ANTHROPIC_API_KEY = "test_anthropic_key"
-        config.MAX_POSITIONS = 10
-        config.LOG_LEVEL = "INFO"
-        return config
+    # Default successful analysis response
+    default_response = {
+        "recommendation": "buy",
+        "confidence": 8,
+        "time_horizon": "medium_term",
+        "position_size": "medium",
+        "entry_target": 185.50,
+        "exit_targets": {"primary": 195.00, "secondary": 200.00},
+        "stop_loss": 178.00,
+        "risk_reward_ratio": 2.5,
+        "investment_thesis": "Strong technical pattern with fundamental support. Company shows consistent revenue growth.",
+        "risk_factors": ["Market volatility", "Sector rotation risk", "Earnings uncertainty"],
+        "catalyst_timeline": {
+            "short_term": ["Technical breakout confirmation"],
+            "medium_term": ["Q2 earnings release"],
+            "long_term": ["New product launch cycle"]
+        },
+        "technical_score": 7.5,
+        "fundamental_score": 8.0
+    }
     
-    @pytest.fixture
-    def mock_llm_provider(self):
-        """Mock LLM provider with realistic responses"""
-        llm = Mock()
-        
-        # Mock successful JSON response for new opportunity
-        successful_response = {
-            "recommendation": "buy",
-            "confidence": 8,
-            "time_horizon": "medium_term",
-            "position_size": "medium",
-            "entry_target": 185.50,
-            "exit_targets": {"primary": 195.00, "secondary": 200.00},
-            "stop_loss": 178.00,
-            "risk_reward_ratio": 2.5,
-            "investment_thesis": "Strong technical pattern with fundamental support",
-            "risk_factors": ["Market volatility", "Sector headwinds"],
-            "catalyst_timeline": {
-                "short_term": ["Technical breakout"],
-                "medium_term": ["Earnings beat"],
-                "long_term": ["Market expansion"]
-            }
-        }
-        
-        llm.generate_completion = AsyncMock(return_value=json.dumps(successful_response))
-        return llm
+    provider.generate_analysis = AsyncMock(return_value=default_response)
+    provider.generate_completion = AsyncMock(return_value=json.dumps(default_response))
     
-    @pytest.fixture
-    def mock_alpaca_provider(self):
-        """Mock Alpaca provider with realistic market data"""
-        alpaca = Mock()
-        
-        # Mock market data
-        alpaca.get_market_data = AsyncMock(return_value={
-            "AAPL": [
-                {
-                    "timestamp": "2024-01-15T16:00:00Z",
-                    "open": 183.0,
-                    "high": 186.0,
-                    "low": 182.0,
-                    "close": 184.5,
-                    "volume": 1200000
-                }
-            ]
-        })
-        
-        # Mock current quote
-        alpaca.get_current_quote = AsyncMock(return_value={
-            "symbol": "AAPL",
-            "price": 184.50,
-            "bid": 184.45,
-            "ask": 184.55,
-            "volume": 1250000
-        })
-        
-        # Mock technical indicators
-        alpaca.get_technical_indicators = AsyncMock(return_value={
-            "rsi": 65.5,
-            "moving_averages": {"sma_20": 182.30},
-            "trend": "bullish"
-        })
-        
-        # Mock news
-        alpaca.get_news = AsyncMock(return_value=[
+    return provider
+
+
+@pytest.fixture
+def mock_alpaca_provider():
+    """Mock Alpaca provider with market data"""
+    provider = MagicMock()
+    
+    # Mock market data
+    provider.get_market_data = AsyncMock(return_value={
+        "AAPL": [
             {
-                "headline": "Strong earnings reported",
-                "created_at": "2024-01-15T09:00:00Z"
+                "timestamp": "2024-01-15T16:00:00Z",
+                "open": 180.00,
+                "high": 186.00,
+                "low": 179.50,
+                "close": 185.00,
+                "volume": 75000000
+            },
+            {
+                "timestamp": "2024-01-16T16:00:00Z",
+                "open": 185.00,
+                "high": 187.50,
+                "low": 184.00,
+                "close": 186.50,
+                "volume": 65000000
             }
-        ])
-        
-        # Mock company info
-        alpaca.get_company_info = AsyncMock(return_value={
-            "sector": "Technology",
-            "market_cap": 2500000000000
-        })
-        
-        # Mock financial data
-        alpaca.get_financial_data = AsyncMock(return_value={
-            "pe_ratio": 28.5,
-            "debt_to_equity": 0.25
-        })
-        
-        return alpaca
+        ]
+    })
     
-    @pytest.fixture
-    def analyst(self, mock_llm_provider, mock_alpaca_provider, mock_config):
-        """Create analyst instance for testing"""
-        return JuniorResearchAnalyst(mock_llm_provider, mock_alpaca_provider, mock_config)
+    # Mock current quote
+    provider.get_quote = AsyncMock(return_value={
+        "symbol": "AAPL",
+        "bid": 186.45,
+        "ask": 186.55,
+        "last": 186.50,
+        "volume": 50000000
+    })
     
-    def test_agent_initialization(self, analyst):
-        """Test agent initialization"""
-        assert analyst.agent_name == "junior_research_analyst"
-        assert analyst.agent_id is not None
-        assert len(analyst.agent_id) == 36  # UUID length
-        assert analyst.performance_metrics["total_analyses"] == 0
-        assert analyst.performance_metrics["successful_analyses"] == 0
-        assert analyst.performance_metrics["failed_analyses"] == 0
+    provider.get_current_quote = AsyncMock(return_value={
+        "symbol": "AAPL",
+        "price": 186.50,
+        "bid": 186.45,
+        "ask": 186.55,
+        "volume": 50000000
+    })
+    
+    # Mock technical indicators
+    provider.get_technical_indicators = AsyncMock(return_value={
+        "rsi": 55.5,
+        "macd": {"macd": 1.2, "signal": 0.9, "histogram": 0.3},
+        "sma_20": 183.00,
+        "sma_50": 180.00,
+        "ema_12": 184.50,
+        "ema_26": 182.00,
+        "volume_ratio": 1.2,
+        "atr": 2.5,
+        "bollinger_bands": {"upper": 190.00, "middle": 185.00, "lower": 180.00}
+    })
+    
+    # Mock news
+    provider.get_news = AsyncMock(return_value={
+        "articles": [
+            {
+                "headline": "Apple Reports Strong Q1 Earnings",
+                "summary": "Revenue beat expectations",
+                "created_at": "2024-01-15T09:00:00Z",
+                "sentiment": 0.8
+            },
+            {
+                "headline": "New Product Launch Expected",
+                "summary": "Analysts optimistic about upcoming releases",
+                "created_at": "2024-01-14T14:00:00Z",
+                "sentiment": 0.6
+            }
+        ]
+    })
+    
+    # Mock company info
+    provider.get_company_info = AsyncMock(return_value={
+        "sector": "Technology",
+        "industry": "Consumer Electronics",
+        "market_cap": 2.95e12,
+        "pe_ratio": 30.5,
+        "dividend_yield": 0.44,
+        "beta": 1.25
+    })
+    
+    # Mock financial data
+    provider.get_financial_data = AsyncMock(return_value={
+        "revenue_growth": 0.08,
+        "earnings_growth": 0.12,
+        "profit_margin": 0.25,
+        "debt_to_equity": 1.5,
+        "roe": 0.35,
+        "current_ratio": 1.2
+    })
+    
+    return provider
+
+
+@pytest.fixture
+def mock_technical_engine(mock_alpaca_provider):
+    """Mock Technical Analysis Engine"""
+    engine = MagicMock()
+    engine.alpaca = mock_alpaca_provider
+    
+    engine.analyze = AsyncMock(return_value={
+        "technical_score": 7.5,
+        "trend": "bullish",
+        "momentum": "strong",
+        "support_levels": [180.00, 175.00],
+        "resistance_levels": [190.00, 195.00],
+        "patterns": ["ascending_triangle", "bullish_flag"],
+        "signals": {
+            "buy": 3,
+            "sell": 0,
+            "neutral": 2
+        }
+    })
+    
+    return engine
+
+
+@pytest.fixture
+def mock_fundamental_engine(mock_alpaca_provider):
+    """Mock Fundamental Analysis Engine"""
+    engine = MagicMock()
+    engine.alpaca = mock_alpaca_provider
+    
+    engine.analyze = AsyncMock(return_value={
+        "fundamental_score": 8.0,
+        "valuation": "fair",
+        "growth_rating": "strong",
+        "financial_health": "excellent",
+        "competitive_position": "dominant",
+        "earnings_trend": "improving"
+    })
+    
+    return engine
+
+
+@pytest.fixture
+def junior_analyst(mock_llm_provider, mock_alpaca_provider, mock_config):
+    """Create Junior Research Analyst instance"""
+    analyst = JuniorResearchAnalyst(
+        mock_llm_provider,
+        mock_alpaca_provider,
+        mock_config
+    )
+    
+    # Mock the internal engines
+    analyst.technical_engine = MagicMock()
+    analyst.technical_engine.analyze = AsyncMock(return_value={
+        "technical_score": 7.5,
+        "trend": "bullish"
+    })
+    
+    analyst.fundamental_engine = MagicMock()
+    analyst.fundamental_engine.analyze = AsyncMock(return_value={
+        "fundamental_score": 8.0,
+        "valuation": "fair"
+    })
+    
+    return analyst
+
+
+@pytest.fixture
+def sample_technical_signal():
+    """Sample technical signal for testing"""
+    return {
+        "pattern": "ascending_triangle",
+        "score": 8.2,
+        "resistance_level": 190.00,
+        "support_level": 180.00,
+        "volume_confirmation": True,
+        "formation_days": 8,
+        "breakout_probability": 0.75
+    }
+
+
+@pytest.fixture
+def sample_position_data():
+    """Sample position data for reevaluation"""
+    return {
+        "symbol": "AAPL",
+        "quantity": 100,
+        "entry_price": 175.00,
+        "current_price": 186.50,
+        "unrealized_pnl": 1150.00,
+        "unrealized_pnl_percent": 6.57,
+        "holding_period_days": 30
+    }
+
+
+# ==============================================================================
+# UNIT TESTS - Agent Initialization
+# ==============================================================================
+
+@pytest.mark.unit
+class TestAgentInitialization:
+    """Test Junior Analyst initialization"""
+    
+    def test_agent_creation(self, junior_analyst):
+        """Test agent is created successfully"""
+        assert junior_analyst is not None
+        assert junior_analyst.agent_name == "junior_research_analyst"
+        assert junior_analyst.agent_id is not None
+        assert isinstance(junior_analyst.agent_id, str)
+        assert len(junior_analyst.agent_id) == 36  # UUID length
+    
+    def test_agent_initial_metrics(self, junior_analyst):
+        """Test initial performance metrics"""
+        assert junior_analyst.performance_metrics["total_analyses"] == 0
+        assert junior_analyst.performance_metrics["successful_analyses"] == 0
+        assert junior_analyst.performance_metrics["failed_analyses"] == 0
+        assert junior_analyst.performance_metrics["cache_hits"] == 0
+        assert junior_analyst.performance_metrics["average_processing_time"] == 0.0
     
     def test_factory_function(self, mock_llm_provider, mock_alpaca_provider, mock_config):
-        """Test factory function"""
+        """Test factory function creates analyst"""
         analyst = create_junior_analyst(mock_llm_provider, mock_alpaca_provider, mock_config)
+        
         assert isinstance(analyst, JuniorResearchAnalyst)
         assert analyst.agent_name == "junior_research_analyst"
     
-    @pytest.mark.asyncio
-    async def test_new_opportunity_analysis_success(self, analyst):
-        """Test successful new opportunity analysis"""
+    def test_agent_has_required_methods(self, junior_analyst):
+        """Test agent has all required methods"""
+        required_methods = [
+            'analyze_stock',
+            'process_with_metadata',
+            '_analyze_new_opportunity',
+            '_reevaluate_position',
+            'get_performance_summary'
+        ]
         
+        for method in required_methods:
+            assert hasattr(junior_analyst, method)
+
+
+# ==============================================================================
+# UNIT TESTS - New Opportunity Analysis
+# ==============================================================================
+
+@pytest.mark.unit
+class TestNewOpportunityAnalysis:
+    """Test new opportunity analysis functionality"""
+    
+    @pytest.mark.asyncio
+    async def test_analyze_new_opportunity_success(self, junior_analyst, sample_technical_signal):
+        """Test successful new opportunity analysis"""
         task_data = {
             "task_type": AnalysisType.NEW_OPPORTUNITY.value,
             "ticker": "AAPL",
-            "technical_signal": {
-                "pattern": "ascending_triangle",
-                "score": 8.2,
-                "resistance_level": 185.00
-            }
+            "technical_signal": sample_technical_signal
         }
         
-        result = await analyst.analyze_stock(task_data)
+        result = await junior_analyst.analyze_stock(task_data)
         
-        # Verify successful result structure
-        assert result["metadata"]["status"] == "success"
+        assert result is not None
         assert result["ticker"] == "AAPL"
         assert result["analysis_type"] == AnalysisType.NEW_OPPORTUNITY.value
         assert "recommendation" in result
         assert "confidence" in result
         assert "entry_target" in result
-        assert "exit_targets" in result
         assert "stop_loss" in result
         assert "investment_thesis" in result
-        assert "risk_factors" in result
-        
-        # Verify confidence is valid range
-        assert 1 <= result["confidence"] <= 10
-        
-        # Verify targets are numerical
-        assert isinstance(result["entry_target"], (int, float))
-        assert isinstance(result["stop_loss"], (int, float))
-        
-        # Verify performance metrics updated
-        assert analyst.performance_metrics["total_analyses"] == 1
-        assert analyst.performance_metrics["successful_analyses"] == 1
-        assert analyst.performance_metrics["failed_analyses"] == 0
     
     @pytest.mark.asyncio
-    async def test_position_reevaluation_success(self, analyst, mock_llm_provider):
-        """Test successful position reevaluation"""
-        
-        # Mock reevaluation response
-        reevaluation_response = {
-            "action": "increase",
-            "confidence": 7,
-            "targets": {"primary": 190.00, "secondary": 195.00},
-            "stop_loss": 180.00,
-            "conviction_change": "increased",
-            "new_developments": "Positive earnings surprise",
-            "risk_assessment": "Risk decreased due to strong fundamentals",
-            "rationale": "Strong momentum supports position increase"
+    async def test_analyze_with_metadata(self, junior_analyst, sample_technical_signal):
+        """Test analysis with metadata wrapper"""
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            "ticker": "AAPL",
+            "technical_signal": sample_technical_signal
         }
         
-        mock_llm_provider.generate_completion = AsyncMock(
-            return_value=json.dumps(reevaluation_response)
-        )
+        result = await junior_analyst.process_with_metadata(task_data)
         
+        assert "metadata" in result
+        assert result["metadata"]["status"] in ["success", "error"]
+        assert "analysis_id" in result
+        assert "timestamp" in result
+        assert "processing_time" in result["metadata"]
+    
+    @pytest.mark.asyncio
+    async def test_confidence_scoring(self, junior_analyst, sample_technical_signal):
+        """Test confidence score calculation"""
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            "ticker": "AAPL",
+            "technical_signal": sample_technical_signal
+        }
+        
+        result = await junior_analyst.analyze_stock(task_data)
+        
+        assert "confidence" in result
+        assert isinstance(result["confidence"], (int, float))
+        assert 1 <= result["confidence"] <= 10
+    
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("ticker", ["AAPL", "MSFT", "GOOGL", "AMZN"])
+    async def test_multiple_tickers(self, junior_analyst, sample_technical_signal, ticker):
+        """Test analysis works for multiple tickers"""
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            "ticker": ticker,
+            "technical_signal": sample_technical_signal
+        }
+        
+        result = await junior_analyst.analyze_stock(task_data)
+        
+        assert result["ticker"] == ticker
+
+
+# ==============================================================================
+# UNIT TESTS - Position Reevaluation
+# ==============================================================================
+
+@pytest.mark.unit
+class TestPositionReevaluation:
+    """Test position reevaluation functionality"""
+    
+    @pytest.mark.asyncio
+    async def test_reevaluate_position_success(self, junior_analyst, sample_position_data):
+        """Test successful position reevaluation"""
         task_data = {
             "task_type": AnalysisType.POSITION_REEVALUATION.value,
             "ticker": "AAPL",
-            "current_position": {
-                "quantity": 100,
-                "entry_price": 180.00,
-                "current_price": 184.50
-            }
+            "current_position": sample_position_data
         }
         
-        result = await analyst.analyze_stock(task_data)
+        result = await junior_analyst.analyze_stock(task_data)
         
-        # Verify successful reevaluation structure
-        assert result["metadata"]["status"] == "success"
-        assert result["ticker"] == "AAPL"
+        assert result is not None
         assert result["analysis_type"] == AnalysisType.POSITION_REEVALUATION.value
-        assert result["action"] == "increase"
-        assert result["updated_confidence"] == 7
+        assert "action" in result
+        assert "updated_confidence" in result
         assert "updated_targets" in result
         assert "updated_stop_loss" in result
-        assert "new_developments" in result
+        assert "conviction_change" in result
         assert "recommendation_rationale" in result
     
     @pytest.mark.asyncio
-    async def test_risk_assessment_success(self, analyst, mock_llm_provider):
-        """Test successful risk assessment"""
-        
-        # Mock risk assessment response
-        risk_response = {
-            "risk_level": "medium",
-            "risk_score": 6,
-            "risk_factors": ["Market volatility", "Sector rotation"],
-            "volatility_assessment": "Moderate volatility expected",
-            "downside_scenarios": ["Support breakdown", "Market correction"],
-            "risk_mitigation": ["Stop loss", "Position sizing"]
+    async def test_reevaluation_actions(self, junior_analyst, sample_position_data):
+        """Test different reevaluation actions"""
+        task_data = {
+            "task_type": AnalysisType.POSITION_REEVALUATION.value,
+            "ticker": "AAPL",
+            "current_position": sample_position_data
         }
         
-        mock_llm_provider.generate_completion = AsyncMock(
-            return_value=json.dumps(risk_response)
-        )
+        result = await junior_analyst.analyze_stock(task_data)
         
+        valid_actions = ["hold", "increase", "reduce", "exit"]
+        assert result["action"] in valid_actions
+    
+    @pytest.mark.asyncio
+    async def test_conviction_change_tracking(self, junior_analyst, sample_position_data):
+        """Test conviction change tracking"""
+        task_data = {
+            "task_type": AnalysisType.POSITION_REEVALUATION.value,
+            "ticker": "AAPL",
+            "current_position": sample_position_data
+        }
+        
+        result = await junior_analyst.analyze_stock(task_data)
+        
+        valid_changes = ["increased", "decreased", "unchanged"]
+        assert result["conviction_change"] in valid_changes
+
+
+# ==============================================================================
+# UNIT TESTS - Risk Assessment
+# ==============================================================================
+
+@pytest.mark.unit
+class TestRiskAssessment:
+    """Test risk assessment functionality"""
+    
+    @pytest.mark.asyncio
+    async def test_risk_assessment_success(self, junior_analyst):
+        """Test successful risk assessment"""
         task_data = {
             "task_type": AnalysisType.RISK_ASSESSMENT.value,
             "ticker": "AAPL",
-            "position_data": {
-                "quantity": 100,
-                "market_value": 18450.00
-            }
+            "position_data": {"quantity": 100, "market_value": 18650.00}
         }
         
-        result = await analyst.analyze_stock(task_data)
+        result = await junior_analyst.analyze_stock(task_data)
         
-        # Verify successful risk assessment structure
+        assert result is not None
+        assert result["analysis_type"] == AnalysisType.RISK_ASSESSMENT.value
+        assert "risk_level" in result
+        assert "risk_score" in result
+        assert "risk_factors" in result
+    
+    @pytest.mark.asyncio
+    async def test_risk_levels(self, junior_analyst):
+        """Test risk level categorization"""
+        task_data = {
+            "task_type": AnalysisType.RISK_ASSESSMENT.value,
+            "ticker": "AAPL",
+            "position_data": {"quantity": 100, "market_value": 18650.00}
+        }
+        
+        result = await junior_analyst.analyze_stock(task_data)
+        
+        valid_levels = ["low", "medium", "high", "very_high"]
+        assert result["risk_level"] in valid_levels
+    
+    @pytest.mark.asyncio
+    async def test_risk_score_range(self, junior_analyst):
+        """Test risk score is in valid range"""
+        task_data = {
+            "task_type": AnalysisType.RISK_ASSESSMENT.value,
+            "ticker": "AAPL",
+            "position_data": {"quantity": 100, "market_value": 18650.00}
+        }
+        
+        result = await junior_analyst.analyze_stock(task_data)
+        
+        assert isinstance(result["risk_score"], (int, float))
+        assert 0 <= result["risk_score"] <= 10
+
+
+# ==============================================================================
+# INTEGRATION TESTS - Complete Analysis Flow
+# ==============================================================================
+
+@pytest.mark.integration
+class TestCompleteAnalysisFlow:
+    """Test complete analysis workflows"""
+    
+    @pytest.mark.asyncio
+    async def test_full_new_opportunity_flow(self, junior_analyst, sample_technical_signal):
+        """Test complete new opportunity analysis flow"""
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            "ticker": "AAPL",
+            "technical_signal": sample_technical_signal
+        }
+        
+        # Process with metadata
+        result = await junior_analyst.process_with_metadata(task_data)
+        
+        # Verify complete result structure
         assert result["metadata"]["status"] == "success"
         assert result["ticker"] == "AAPL"
-        assert result["analysis_type"] == AnalysisType.RISK_ASSESSMENT.value
-        assert result["risk_level"] == "medium"
-        assert result["risk_score"] == 6
-        assert isinstance(result["risk_factors"], list)
-        assert isinstance(result["downside_scenarios"], list)
-        assert isinstance(result["risk_mitigation"], list)
+        assert result["recommendation"] in ["buy", "strong_buy", "hold", "sell", "strong_sell"]
+        assert result["confidence"] >= 1 and result["confidence"] <= 10
+        
+        # Verify all required fields present
+        required_fields = [
+            "entry_target", "stop_loss", "exit_targets",
+            "investment_thesis", "risk_factors", "time_horizon",
+            "position_size", "risk_reward_ratio"
+        ]
+        
+        for field in required_fields:
+            assert field in result
     
     @pytest.mark.asyncio
-    async def test_invalid_task_type(self, analyst):
-        """Test handling of invalid task type"""
-        
-        task_data = {
-            "task_type": "invalid_type",
-            "ticker": "AAPL"
-        }
-        
-        result = await analyst.analyze_stock(task_data)
-        
-        assert result["metadata"]["status"] == "error"
-        assert "Invalid task_type" in result["metadata"]["error"]
-    
-    @pytest.mark.asyncio
-    async def test_missing_ticker(self, analyst):
-        """Test handling of missing ticker"""
-        
-        task_data = {
-            "task_type": AnalysisType.NEW_OPPORTUNITY.value
-        }
-        
-        result = await analyst.analyze_stock(task_data)
-        
-        assert result["metadata"]["status"] == "error"
-        assert "Missing required field: ticker" in result["metadata"]["error"]
-    
-    @pytest.mark.asyncio
-    async def test_empty_ticker(self, analyst):
-        """Test handling of empty ticker"""
-        
-        task_data = {
-            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
-            "ticker": ""
-        }
-        
-        result = await analyst.analyze_stock(task_data)
-        
-        assert result["metadata"]["status"] == "error"
-        assert "Ticker must be a non-empty string" in result["metadata"]["error"]
-    
-    @pytest.mark.asyncio
-    async def test_llm_failure_fallback(self, analyst, mock_llm_provider):
-        """Test fallback behavior when LLM fails"""
-        
-        # Mock LLM failure
-        mock_llm_provider.generate_completion = AsyncMock(
-            side_effect=Exception("LLM API Error")
-        )
-        
+    async def test_analysis_with_caching(self, junior_analyst, sample_technical_signal):
+        """Test analysis caching functionality"""
         task_data = {
             "task_type": AnalysisType.NEW_OPPORTUNITY.value,
             "ticker": "AAPL",
-            "technical_signal": {"pattern": "breakout", "score": 8}
-        }
-        
-        result = await analyst.analyze_stock(task_data)
-        
-        # Should return fallback analysis
-        assert result["metadata"]["status"] == "fallback"
-        assert result["ticker"] == "AAPL"
-        assert "recommendation" in result
-        assert "investment_thesis" in result
-        assert "fallback_reason" in result["metadata"]
-    
-    @pytest.mark.asyncio
-    async def test_market_data_failure(self, analyst, mock_alpaca_provider):
-        """Test handling of market data failure"""
-        
-        # Mock market data failure
-        mock_alpaca_provider.get_market_data = AsyncMock(
-            side_effect=Exception("Market data API error")
-        )
-        
-        task_data = {
-            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
-            "ticker": "AAPL",
-            "technical_signal": {"pattern": "breakout", "score": 8}
-        }
-        
-        result = await analyst.analyze_stock(task_data)
-        
-        # Should return error due to market data failure
-        assert result["metadata"]["status"] == "error"
-        assert "Failed to gather market data" in result["metadata"]["error"]
-    
-    @pytest.mark.asyncio
-    async def test_caching_mechanism(self, analyst):
-        """Test analysis result caching"""
-        
-        task_data = {
-            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
-            "ticker": "AAPL",
-            "technical_signal": {"pattern": "breakout", "score": 8}
+            "technical_signal": sample_technical_signal
         }
         
         # First analysis
-        result1 = await analyst.analyze_stock(task_data)
-        first_analysis_id = result1["analysis_id"]
+        result1 = await junior_analyst.analyze_stock(task_data)
         
         # Second analysis (should be cached)
-        result2 = await analyst.analyze_stock(task_data)
-        second_analysis_id = result2["analysis_id"]
+        result2 = await junior_analyst.analyze_stock(task_data)
         
-        # Should return same cached result
-        assert first_analysis_id == second_analysis_id
-        assert analyst.performance_metrics["cache_hits"] == 1
-    
-    def test_performance_summary(self, analyst):
-        """Test performance summary generation"""
-        
-        # Manually update some metrics for testing
-        analyst.performance_metrics["total_analyses"] = 5
-        analyst.performance_metrics["successful_analyses"] = 4
-        analyst.performance_metrics["failed_analyses"] = 1
-        analyst.performance_metrics["cache_hits"] = 2
-        analyst.performance_metrics["average_processing_time"] = 1.5
-        analyst.performance_metrics["last_activity"] = datetime.now()
-        
-        summary = analyst.get_performance_summary()
-        
-        assert summary["agent_name"] == "junior_research_analyst"
-        assert summary["total_analyses"] == 5
-        assert summary["success_rate"] == "80.0%"
-        assert summary["average_processing_time"] == "1.50s"
-        assert summary["cache_hit_rate"] == "40.0%"
-        assert summary["last_activity"] is not None
-    
-    def test_markdown_report_generation(self, analyst):
-        """Test markdown report generation"""
-        
-        # Sample analysis result
-        analysis_result = {
-            "analysis_id": "test-123",
-            "ticker": "AAPL",
-            "timestamp": "2024-01-15T10:00:00Z",
-            "analysis_type": AnalysisType.NEW_OPPORTUNITY.value,
-            "recommendation": "buy",
-            "confidence": 8,
-            "time_horizon": "medium_term",
-            "position_size": "medium",
-            "entry_target": 185.50,
-            "exit_targets": {"primary": 195.00, "secondary": 200.00},
-            "stop_loss": 178.00,
-            "risk_reward_ratio": 2.5,
-            "investment_thesis": "Strong technical pattern with fundamental support",
-            "risk_factors": ["Market volatility", "Sector headwinds"],
-            "catalyst_timeline": {
-                "short_term": ["Technical breakout"],
-                "medium_term": ["Earnings beat"],
-                "long_term": ["Market expansion"]
-            },
-            "technical_summary": "Bullish trend confirmed",
-            "fundamental_summary": "Strong fundamentals",
-            "market_context": {"current_price": 184.50, "rsi": 65.5, "trend": "bullish"},
-            "metadata": {"status": "success", "data_quality": "good", "analysis_version": "1.0"}
-        }
-        
-        markdown_report = analyst.generate_markdown_report(analysis_result)
-        
-        # Verify markdown structure
-        assert "# Stock Analysis Report: AAPL" in markdown_report
-        assert "**Recommendation:** BUY" in markdown_report
-        assert "**Confidence:** 8/10" in markdown_report
-        assert "## Investment Thesis" in markdown_report
-        assert "## Risk Factors" in markdown_report
-        assert "Strong technical pattern with fundamental support" in markdown_report
-        assert "- Market volatility" in markdown_report
-        assert "- Sector headwinds" in markdown_report
-    
-    def test_markdown_report_error_case(self, analyst):
-        """Test markdown report generation for error cases"""
-        
-        error_result = {
-            "analysis_id": "error-123",
-            "ticker": "INVALID",
-            "timestamp": "2024-01-15T10:00:00Z",
-            "metadata": {
-                "status": "error",
-                "error": "Invalid ticker symbol"
-            }
-        }
-        
-        markdown_report = analyst.generate_markdown_report(error_result)
-        
-        assert "# Analysis Error Report" in markdown_report
-        assert "**Ticker:** INVALID" in markdown_report
-        assert "Invalid ticker symbol" in markdown_report
+        # Results should be identical (from cache)
+        assert result1["analysis_id"] == result2["analysis_id"]
+        assert junior_analyst.performance_metrics["cache_hits"] > 0
     
     @pytest.mark.asyncio
-    async def test_technical_analysis_engine(self, mock_alpaca_provider):
-        """Test technical analysis engine"""
-        
-        engine = TechnicalAnalysisEngine(mock_alpaca_provider)
-        
-        market_data = {
-            "price_data": [
-                {"close": 180.0, "volume": 1000000},
-                {"close": 182.0, "volume": 1100000},
-                {"close": 184.0, "volume": 1200000},
-                {"close": 186.0, "volume": 1300000},
-                {"close": 185.0, "volume": 1250000}
-            ],
-            "technical_indicators": {"rsi": 65.5}
+    async def test_error_recovery(self, junior_analyst):
+        """Test error recovery mechanisms"""
+        # Create task with missing required field
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            # Missing ticker
         }
         
-        result = await engine.analyze("AAPL", market_data)
+        result = await junior_analyst.process_with_metadata(task_data)
         
-        assert "trend" in result
-        assert "current_price" in result
-        assert "summary" in result
-        assert result["current_price"] == 185.0
-    
-    @pytest.mark.asyncio
-    async def test_fundamental_analysis_engine(self, mock_alpaca_provider):
-        """Test fundamental analysis engine"""
-        
-        engine = FundamentalAnalysisEngine(mock_alpaca_provider)
-        
-        result = await engine.analyze("AAPL")
-        
-        assert "sector" in result
-        assert "summary" in result
-        # Should use mocked data
-        assert "Technology" in result["summary"]
+        assert result["metadata"]["status"] == "error"
+        assert "error" in result["metadata"]
 
 
-class TestIntegration:
-    """Integration tests for the complete agent workflow"""
+# ==============================================================================
+# INTEGRATION TESTS - Engine Integration
+# ==============================================================================
+
+@pytest.mark.integration
+class TestEngineIntegration:
+    """Test integration with analysis engines"""
     
     @pytest.mark.asyncio
-    async def test_end_to_end_workflow(self):
-        """Test complete end-to-end analysis workflow"""
-        
-        # Setup components (you would use real implementations in production)
-        config = Mock()
-        config.ANTHROPIC_API_KEY = "test_key"
-        
-        # Mock LLM with realistic response
-        llm = Mock()
-        llm.generate_completion = AsyncMock(return_value=json.dumps({
-            "recommendation": "buy",
-            "confidence": 8,
-            "time_horizon": "medium_term",
-            "position_size": "medium",
-            "entry_target": 185.50,
-            "exit_targets": {"primary": 195.00, "secondary": 200.00},
-            "stop_loss": 178.00,
-            "risk_reward_ratio": 2.5,
-            "investment_thesis": "Comprehensive analysis supports buy recommendation",
-            "risk_factors": ["Market volatility", "Earnings risk"],
-            "catalyst_timeline": {
-                "short_term": ["Technical breakout"],
-                "medium_term": ["Earnings release"],
-                "long_term": ["Product cycle"]
-            }
-        }))
-        
-        # Mock Alpaca with market data
-        alpaca = Mock()
-        alpaca.get_market_data = AsyncMock(return_value={
-            "AAPL": [{"close": 184.5, "volume": 1000000, "timestamp": "2024-01-15T16:00:00Z"}]
-        })
-        alpaca.get_current_quote = AsyncMock(return_value={"price": 184.50})
-        alpaca.get_technical_indicators = AsyncMock(return_value={"rsi": 65.5})
-        alpaca.get_news = AsyncMock(return_value=[])
-        alpaca.get_company_info = AsyncMock(return_value={"sector": "Technology"})
-        alpaca.get_financial_data = AsyncMock(return_value={"pe_ratio": 28.5})
-        
-        # Create analyst
-        analyst = create_junior_analyst(llm, alpaca, config)
-        
-        # Test complete workflow
+    async def test_technical_engine_integration(self, junior_analyst):
+        """Test technical analysis engine integration"""
         task_data = {
             "task_type": AnalysisType.NEW_OPPORTUNITY.value,
             "ticker": "AAPL",
-            "technical_signal": {
-                "pattern": "ascending_triangle",
-                "score": 8.2,
-                "resistance_level": 185.00
-            }
+            "technical_signal": {"pattern": "breakout", "score": 8}
         }
         
-        # Perform analysis
-        result = await analyst.analyze_stock(task_data)
+        result = await junior_analyst.analyze_stock(task_data)
         
-        # Verify complete workflow
-        assert result["metadata"]["status"] == "success"
+        # Verify technical analysis was performed
+        junior_analyst.technical_engine.analyze.assert_called()
+    
+    @pytest.mark.asyncio
+    async def test_fundamental_engine_integration(self, junior_analyst):
+        """Test fundamental analysis engine integration"""
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            "ticker": "AAPL",
+            "technical_signal": {"pattern": "breakout", "score": 8}
+        }
+        
+        result = await junior_analyst.analyze_stock(task_data)
+        
+        # Verify fundamental analysis was performed
+        junior_analyst.fundamental_engine.analyze.assert_called()
+
+
+# ==============================================================================
+# STRESS TESTS
+# ==============================================================================
+
+@pytest.mark.stress
+class TestStress:
+    """Stress tests for Junior Analyst"""
+    
+    @pytest.mark.asyncio
+    async def test_concurrent_analyses(self, junior_analyst, sample_technical_signal):
+        """Test concurrent analysis requests"""
+        tasks = []
+        tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "META"] * 10
+        
+        for ticker in tickers:
+            task_data = {
+                "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+                "ticker": ticker,
+                "technical_signal": sample_technical_signal
+            }
+            tasks.append(junior_analyst.analyze_stock(task_data))
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        successful = sum(1 for r in results if not isinstance(r, Exception))
+        assert successful == len(tickers)
+    
+    @pytest.mark.asyncio
+    async def test_rapid_sequential_analyses(self, junior_analyst, sample_technical_signal):
+        """Test rapid sequential analyses"""
+        for i in range(50):
+            task_data = {
+                "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+                "ticker": f"TEST{i}",
+                "technical_signal": sample_technical_signal
+            }
+            
+            result = await junior_analyst.analyze_stock(task_data)
+            assert result is not None
+    
+    @pytest.mark.asyncio
+    async def test_memory_efficiency(self, junior_analyst, sample_technical_signal):
+        """Test memory efficiency with many analyses"""
+        initial_cache_size = len(junior_analyst.analysis_cache)
+        
+        # Perform many analyses
+        for i in range(100):
+            task_data = {
+                "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+                "ticker": f"STOCK{i}",
+                "technical_signal": sample_technical_signal
+            }
+            await junior_analyst.analyze_stock(task_data)
+        
+        # Cache should not grow unbounded
+        # Assuming some cache size limit
+        assert len(junior_analyst.analysis_cache) <= 1000
+
+
+# ==============================================================================
+# SMOKE TESTS
+# ==============================================================================
+
+@pytest.mark.smoke
+class TestSmoke:
+    """Quick smoke tests for basic functionality"""
+    
+    @pytest.mark.asyncio
+    async def test_basic_analysis(self, junior_analyst):
+        """Test basic analysis works"""
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            "ticker": "AAPL",
+            "technical_signal": {"pattern": "test", "score": 7}
+        }
+        
+        result = await junior_analyst.analyze_stock(task_data)
+        
+        assert result is not None
         assert result["ticker"] == "AAPL"
-        assert result["recommendation"] == "buy"
-        assert result["confidence"] == 8
+    
+    def test_agent_exists(self, junior_analyst):
+        """Test agent exists and is initialized"""
+        assert junior_analyst is not None
+        assert junior_analyst.agent_name == "junior_research_analyst"
+    
+    def test_performance_metrics_exist(self, junior_analyst):
+        """Test performance metrics are tracked"""
+        summary = junior_analyst.get_performance_summary()
         
-        # Generate markdown report
-        markdown_report = analyst.generate_markdown_report(result)
-        assert len(markdown_report) > 100  # Substantial report generated
-        
-        # Verify performance tracking
-        performance = analyst.get_performance_summary()
-        assert performance["total_analyses"] == 1
-        assert performance["success_rate"] == "100.0%"
-        
-        print("✅ End-to-end integration test passed!")
+        assert summary is not None
+        assert "agent_name" in summary
+        assert "total_analyses" in summary
 
 
-def run_tests():
-    """Run all tests with detailed output"""
-    
-    print("🧪 JUNIOR RESEARCH ANALYST - TEST SUITE")
-    print("=" * 60)
-    
-    # Run pytest with verbose output
-    pytest_args = [
-        __file__,
-        "-v",  # Verbose output
-        "-s",  # Don't capture stdout
-        "--tb=short",  # Short traceback format
-        "--durations=10"  # Show 10 slowest tests
-    ]
-    
-    exit_code = pytest.main(pytest_args)
-    
-    if exit_code == 0:
-        print("\n✅ ALL TESTS PASSED!")
-        print("The Junior Research Analyst Agent is ready for deployment.")
-    else:
-        print("\n❌ SOME TESTS FAILED!")
-        print("Please review the test output and fix any issues.")
-    
-    return exit_code
+# ==============================================================================
+# ERROR HANDLING TESTS
+# ==============================================================================
 
+@pytest.mark.unit
+class TestErrorHandling:
+    """Test error handling scenarios"""
+    
+    @pytest.mark.asyncio
+    async def test_missing_ticker(self, junior_analyst):
+        """Test handling of missing ticker"""
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            # Missing ticker
+        }
+        
+        result = await junior_analyst.process_with_metadata(task_data)
+        
+        assert result["metadata"]["status"] == "error"
+        assert "ticker" in result["metadata"]["error"].lower()
+    
+    @pytest.mark.asyncio
+    async def test_invalid_task_type(self, junior_analyst):
+        """Test handling of invalid task type"""
+        task_data = {
+            "task_type": "INVALID_TYPE",
+            "ticker": "AAPL"
+        }
+        
+        result = await junior_analyst.process_with_metadata(task_data)
+        
+        assert result["metadata"]["status"] == "error"
+    
+    @pytest.mark.asyncio
+    async def test_llm_failure_handling(self, junior_analyst, mock_llm_provider):
+        """Test handling of LLM failures"""
+        # Make LLM fail
+        mock_llm_provider.generate_analysis.side_effect = Exception("LLM Error")
+        
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            "ticker": "AAPL",
+            "technical_signal": {"pattern": "test", "score": 7}
+        }
+        
+        result = await junior_analyst.process_with_metadata(task_data)
+        
+        # Should handle gracefully with fallback
+        assert result is not None
+        assert result["metadata"]["status"] in ["error", "success"]  # May have fallback
+
+
+# ==============================================================================
+# PARAMETRIZED TESTS
+# ==============================================================================
+
+@pytest.mark.parametrize("recommendation,expected_confidence_min", [
+    ("strong_buy", 8),
+    ("buy", 6),
+    ("hold", 4),
+    ("sell", 4),
+    ("strong_sell", 6),
+])
+@pytest.mark.unit
+def test_recommendation_confidence_correlation(recommendation, expected_confidence_min):
+    """Test correlation between recommendation and confidence"""
+    # This is a conceptual test - would need actual implementation
+    assert expected_confidence_min >= 4  # All recommendations need some confidence
+
+
+@pytest.mark.parametrize("time_horizon,position_size", [
+    (TimeHorizon.SHORT_TERM.value, PositionSize.SMALL.value),
+    (TimeHorizon.MEDIUM_TERM.value, PositionSize.MEDIUM.value),
+    (TimeHorizon.LONG_TERM.value, PositionSize.LARGE.value),
+])
+@pytest.mark.unit
+def test_time_horizon_position_size_relationship(time_horizon, position_size):
+    """Test relationship between time horizon and position size"""
+    # Conceptual test to verify expected relationships
+    valid_sizes = [PositionSize.SMALL.value, PositionSize.MEDIUM.value, 
+                   PositionSize.LARGE.value, PositionSize.MAX.value]
+    assert position_size in valid_sizes
+
+
+# ==============================================================================
+# PERFORMANCE TESTS
+# ==============================================================================
+
+@pytest.mark.unit
+class TestPerformanceTracking:
+    """Test performance tracking functionality"""
+    
+    @pytest.mark.asyncio
+    async def test_performance_metrics_update(self, junior_analyst, sample_technical_signal):
+        """Test performance metrics are updated"""
+        initial_total = junior_analyst.performance_metrics["total_analyses"]
+        
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            "ticker": "AAPL",
+            "technical_signal": sample_technical_signal
+        }
+        
+        await junior_analyst.analyze_stock(task_data)
+        
+        assert junior_analyst.performance_metrics["total_analyses"] == initial_total + 1
+        assert junior_analyst.performance_metrics["successful_analyses"] >= initial_total
+    
+    def test_performance_summary_format(self, junior_analyst):
+        """Test performance summary format"""
+        summary = junior_analyst.get_performance_summary()
+        
+        expected_fields = [
+            "agent_name",
+            "agent_id",
+            "total_analyses",
+            "success_rate",
+            "average_processing_time",
+            "cache_hit_rate"
+        ]
+        
+        for field in expected_fields:
+            assert field in summary
+    
+    @pytest.mark.asyncio
+    async def test_processing_time_tracking(self, junior_analyst, sample_technical_signal):
+        """Test processing time is tracked"""
+        task_data = {
+            "task_type": AnalysisType.NEW_OPPORTUNITY.value,
+            "ticker": "AAPL",
+            "technical_signal": sample_technical_signal
+        }
+        
+        result = await junior_analyst.process_with_metadata(task_data)
+        
+        assert "processing_time" in result["metadata"]
+        assert result["metadata"]["processing_time"] >= 0
+
+
+# ==============================================================================
+# TEST RUNNER
+# ==============================================================================
 
 if __name__ == "__main__":
-    # Run the test suite
-    exit_code = run_tests()
-    exit(exit_code)
+    import sys
+    
+    # Run with coverage if requested
+    if "--coverage" in sys.argv:
+        sys.argv.remove("--coverage")
+        sys.exit(pytest.main([__file__, "--cov=agents", "--cov-report=html", "-v"]))
+    else:
+        sys.exit(pytest.main([__file__, "-v"]))

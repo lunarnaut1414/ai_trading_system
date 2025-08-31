@@ -1137,10 +1137,19 @@ class JuniorAnalystPool:
         return metrics
 
 
+# In your junior_research_analyst.py file, add at the end:
+from agents.junior_research_analyst_patch import apply_patch_to_analyst
+
+
 # ========================================================================================
 # FACTORY FUNCTION
 # ========================================================================================
+# In your create_junior_analyst function:
+def create_junior_analyst(llm_provider, alpaca_provider, config):
+    analyst = JuniorResearchAnalyst(llm_provider, alpaca_provider, config)
+    # Apply the patch
+    return apply_patch_to_analyst(analyst)
 
-def create_junior_analyst(llm_provider, alpaca_provider, config) -> JuniorResearchAnalyst:
-    """Factory function to create Junior Research Analyst"""
-    return JuniorResearchAnalyst(llm_provider, alpaca_provider, config)
+# def create_junior_analyst(llm_provider, alpaca_provider, config) -> JuniorResearchAnalyst:
+#     """Factory function to create Junior Research Analyst"""
+#     return JuniorResearchAnalyst(llm_provider, alpaca_provider, config)

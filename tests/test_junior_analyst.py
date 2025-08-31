@@ -848,7 +848,6 @@ class TestPerformanceTracking:
         assert "processing_time" in result["metadata"]
         assert result["metadata"]["processing_time"] >= 0
 
-
 # ==============================================================================
 # TEST RUNNER
 # ==============================================================================

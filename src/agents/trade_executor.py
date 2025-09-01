@@ -12,7 +12,7 @@ from enum import Enum
 import numpy as np
 
 from utils.base_agent import BaseAgent
-from data.alpaca_provider import AlpacaProvider
+from src.data.alpaca_provider import AlpacaProvider
 
 # Define order enums locally or import from alpaca if available
 class OrderSide:

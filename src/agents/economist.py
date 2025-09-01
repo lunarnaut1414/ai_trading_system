@@ -25,7 +25,7 @@ from collections import defaultdict
 import hashlib
 
 # Import shared components from existing agents
-from agents.junior_research_analyst import (
+from src.agents.junior_analyst import (
     MarketContextManager,
     UnifiedRiskAssessment,
     IntelligentCacheManager,
@@ -35,7 +35,7 @@ from agents.junior_research_analyst import (
     RiskLevel
 )
 
-from agents.senior_research_analyst import (
+from src.agents.senior_analyst import (
     MarketRegime,
     AllocationStrategy
 )

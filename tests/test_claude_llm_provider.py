@@ -1,431 +1,352 @@
-#!/usr/bin/env python3
+# tests/test_claude_provider.py
 """
-Claude Model Tester and Auto-Configuration Tool
-Discovers available models and updates configuration automatically
+Pytest-compatible test suite for Claude-only LLM Provider
+Run with: pytest tests/test_claude_provider.py -v
 """
 
-import os
-import sys
+import pytest
 import json
-import asyncio
-import argparse
-from typing import Dict, List, Optional, Tuple
-from datetime import datetime
+import sys
+import os
 from pathlib import Path
-from anthropic import Anthropic, APIError
+from datetime import datetime
+import asyncio
 
-class ClaudeModelTester:
-    """Test Claude models and auto-configure the best available ones"""
-    
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize the model tester"""
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not found in environment")
-        
-        self.client = Anthropic(api_key=self.api_key)
-        self.results = {}
-        
-    def test_model(self, model_id: str, verbose: bool = True) -> Dict:
-        """
-        Test a single model
-        
-        Returns:
-            Dictionary with test results
-        """
-        try:
-            if verbose:
-                print(f"Testing {model_id}...", end=" ")
-            
-            # Test with minimal prompt
-            start_time = datetime.now()
-            response = self.client.messages.create(
-                model=model_id,
-                messages=[{"role": "user", "content": "Reply with just 'ok'"}],
-                max_tokens=10,
-                temperature=0
-            )
-            response_time = (datetime.now() - start_time).total_seconds()
-            
-            # Model works!
-            result = {
-                "status": "available",
-                "response_time": response_time,
-                "content": response.content[0].text,
-                "tested_at": datetime.now().isoformat()
-            }
-            
-            if verbose:
-                print(f"✅ Available ({response_time:.2f}s)")
-            
-            return result
-            
-        except APIError as e:
-            error_msg = str(e)
-            
-            # Categorize error
-            if "model_not_found" in error_msg.lower() or "does not exist" in error_msg.lower():
-                status = "not_found"
-                symbol = "❌"
-            elif "authentication" in error_msg.lower():
-                status = "auth_error"
-                symbol = "🔐"
-            elif "rate" in error_msg.lower():
-                status = "rate_limited"
-                symbol = "⏱️"
-            elif "permission" in error_msg.lower():
-                status = "no_permission"
-                symbol = "🚫"
-            else:
-                status = "error"
-                symbol = "❌"
-            
-            if verbose:
-                print(f"{symbol} {status}")
-            
-            return {
-                "status": status,
-                "error": error_msg[:200],
-                "tested_at": datetime.now().isoformat()
-            }
-        
-        except Exception as e:
-            if verbose:
-                print(f"❌ Error: {str(e)[:50]}")
-            
-            return {
-                "status": "error",
-                "error": str(e)[:200],
-                "tested_at": datetime.now().isoformat()
-            }
-    
-    def test_model_capabilities(self, model_id: str) -> Dict:
-        """
-        Test model capabilities in detail
-        
-        Returns:
-            Dictionary with capability test results
-        """
-        print(f"\n🔬 Testing capabilities for {model_id}...")
-        capabilities = {}
-        
-        # Test 1: Basic reasoning
-        try:
-            response = self.client.messages.create(
-                model=model_id,
-                messages=[{"role": "user", "content": "What is 15 * 17? Reply with just the number."}],
-                max_tokens=10,
-                temperature=0
-            )
-            capabilities["basic_math"] = "255" in response.content[0].text
-            print(f"   Basic Math: {'✅' if capabilities['basic_math'] else '❌'}")
-        except:
-            capabilities["basic_math"] = False
-            print(f"   Basic Math: ❌")
-        
-        # Test 2: JSON generation
-        try:
-            response = self.client.messages.create(
-                model=model_id,
-                messages=[{"role": "user", "content": 'Generate JSON: {"status": "ok", "value": 42}'}],
-                max_tokens=50,
-                temperature=0
-            )
-            json.loads(response.content[0].text)
-            capabilities["json_generation"] = True
-            print(f"   JSON Generation: ✅")
-        except:
-            capabilities["json_generation"] = False
-            print(f"   JSON Generation: ❌")
-        
-        # Test 3: Context length (test with longer prompt)
-        try:
-            long_prompt = "Summarize this: " + ("test " * 1000)
-            response = self.client.messages.create(
-                model=model_id,
-                messages=[{"role": "user", "content": long_prompt}],
-                max_tokens=50,
-                temperature=0
-            )
-            capabilities["handles_long_context"] = True
-            print(f"   Long Context: ✅")
-        except:
-            capabilities["handles_long_context"] = False
-            print(f"   Long Context: ❌")
-        
-        # Test 4: Response speed
-        times = []
-        for _ in range(3):
-            start = datetime.now()
-            try:
-                self.client.messages.create(
-                    model=model_id,
-                    messages=[{"role": "user", "content": "Hi"}],
-                    max_tokens=10,
-                    temperature=0
-                )
-                times.append((datetime.now() - start).total_seconds())
-            except:
-                pass
-        
-        if times:
-            avg_time = sum(times) / len(times)
-            capabilities["avg_response_time"] = avg_time
-            print(f"   Avg Response Time: {avg_time:.2f}s")
-        
-        return capabilities
-    
-    def discover_all_models(self) -> Dict[str, Dict]:
-        """
-        Test all known Claude models
-        
-        Returns:
-            Dictionary of all test results
-        """
-        # Comprehensive list of Claude models to test
-        all_models = [
-            # Claude 4 series (Latest)
-            "claude-opus-4-1-20250805",
-            "claude-opus-4-20250514",
-            "claude-sonnet-4-20250514",
-            
-            # Claude 3.7 series
-            "claude-3-7-sonnet-20250219",
-            
-            # Claude 3.5 series
-            "claude-3-5-haiku-20241022",
-            "claude-3-5-sonnet-20241022",
-            "claude-3-5-sonnet-20240620",
-            
-            # Claude 3 series (Legacy)
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307",
-            
-            # Claude 2 series (Very old, likely deprecated)
-            "claude-2.1",
-            "claude-2.0",
-            
-            # Instant models (if they exist)
-            "claude-instant-1.2",
-        ]
-        
-        print("\n" + "="*60)
-        print("CLAUDE MODEL DISCOVERY")
-        print("="*60)
-        print(f"Testing {len(all_models)} models...\n")
-        
-        results = {}
-        for model_id in all_models:
-            results[model_id] = self.test_model(model_id)
-        
-        # Categorize results
-        available = {k: v for k, v in results.items() if v["status"] == "available"}
-        not_found = {k: v for k, v in results.items() if v["status"] == "not_found"}
-        errors = {k: v for k, v in results.items() if v["status"] not in ["available", "not_found"]}
-        
-        print("\n" + "="*60)
-        print("DISCOVERY RESULTS")
-        print("="*60)
-        
-        if available:
-            print(f"\n✅ Available Models ({len(available)}):")
-            for model_id, info in available.items():
-                print(f"   {model_id} - Response time: {info['response_time']:.2f}s")
-        
-        if errors:
-            print(f"\n⚠️  Models with Errors ({len(errors)}):")
-            for model_id, info in errors.items():
-                print(f"   {model_id} - {info['status']}")
-        
-        if not_found:
-            print(f"\n❌ Not Found ({len(not_found)}):")
-            for model_id in not_found:
-                print(f"   {model_id}")
-        
-        self.results = results
-        return results
-    
-    def recommend_configuration(self, results: Optional[Dict] = None) -> Dict[str, str]:
-        """
-        Recommend the best model for each tier based on test results
-        
-        Returns:
-            Dictionary with recommended models for each tier
-        """
-        results = results or self.results
-        available = {k: v for k, v in results.items() if v.get("status") == "available"}
-        
-        if not available:
-            print("\n⚠️  No models available!")
-            return {}
-        
-        # Categorize available models by tier
-        haiku_models = []
-        sonnet_models = []
-        opus_models = []
-        
-        for model_id in available:
-            if "haiku" in model_id.lower():
-                haiku_models.append(model_id)
-            elif "sonnet" in model_id.lower():
-                sonnet_models.append(model_id)
-            elif "opus" in model_id.lower():
-                opus_models.append(model_id)
-        
-        # Sort by version (newer versions have higher numbers)
-        def sort_key(model_id):
-            # Extract date from model ID (e.g., 20241022)
-            import re
-            match = re.search(r'(\d{8})', model_id)
-            return match.group(1) if match else "0"
-        
-        recommendations = {}
-        
-        if haiku_models:
-            haiku_models.sort(key=sort_key, reverse=True)
-            recommendations["haiku"] = haiku_models[0]
-        
-        if sonnet_models:
-            sonnet_models.sort(key=sort_key, reverse=True)
-            recommendations["sonnet"] = sonnet_models[0]
-        
-        if opus_models:
-            opus_models.sort(key=sort_key, reverse=True)
-            recommendations["opus"] = opus_models[0]
-        
-        print("\n" + "="*60)
-        print("RECOMMENDED CONFIGURATION")
-        print("="*60)
-        
-        for tier, model_id in recommendations.items():
-            response_time = available[model_id].get("response_time", 0)
-            print(f"\n{tier.upper()}:")
-            print(f"   Model: {model_id}")
-            print(f"   Response Time: {response_time:.2f}s")
-        
-        return recommendations
-    
-    def save_results(self, filepath: str = "claude_models_test_results.json"):
-        """Save test results to file"""
-        output = {
-            "tested_at": datetime.now().isoformat(),
-            "api_key_prefix": self.api_key[:10] + "..." if self.api_key else "None",
-            "results": self.results,
-            "recommendations": self.recommend_configuration()
-        }
-        
-        with open(filepath, 'w') as f:
-            json.dump(output, f, indent=2)
-        
-        print(f"\n💾 Results saved to {filepath}")
-    
-    def generate_env_config(self) -> str:
-        """Generate environment variable configuration"""
-        recommendations = self.recommend_configuration()
-        
-        if not recommendations:
-            return "# No models available"
-        
-        config = [
-            "# Claude Model Configuration",
-            f"# Generated: {datetime.now().isoformat()}",
-            ""
-        ]
-        
-        if "haiku" in recommendations:
-            config.append(f"CLAUDE_MODEL_HAIKU={recommendations['haiku']}")
-        if "sonnet" in recommendations:
-            config.append(f"CLAUDE_MODEL_SONNET={recommendations['sonnet']}")
-        if "opus" in recommendations:
-            config.append(f"CLAUDE_MODEL_OPUS={recommendations['opus']}")
-        
-        config.extend([
-            "",
-            "# Agent-specific overrides (optional)",
-            f"# CLAUDE_MODEL_JUNIOR_ANALYST={recommendations.get('sonnet', '')}",
-            f"# CLAUDE_MODEL_SENIOR_ANALYST={recommendations.get('opus', '')}",
-            f"# CLAUDE_MODEL_PORTFOLIO_MANAGER={recommendations.get('opus', '')}",
-            f"# CLAUDE_MODEL_TRADE_EXECUTION={recommendations.get('haiku', '')}",
-        ])
-        
-        return "\n".join(config)
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from utils.claude_llm_provider import ClaudeLLMProvider, LLMResponse
+from config.claude_config import ClaudeConfig
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Test Claude models and generate optimal configuration"
+# Skip all tests if API key is not configured
+pytestmark = pytest.mark.skipif(
+    not os.getenv("ANTHROPIC_API_KEY"),
+    reason="ANTHROPIC_API_KEY not set"
+)
+
+@pytest.fixture(scope="module")
+def claude_provider():
+    """Fixture to create and return Claude provider instance"""
+    if not ClaudeConfig.validate():
+        pytest.skip("Claude configuration invalid")
+    
+    provider = ClaudeLLMProvider(
+        api_key=ClaudeConfig.ANTHROPIC_API_KEY,
+        model=ClaudeConfig.CLAUDE_MODEL,
+        max_retries=3,
+        cache_ttl_minutes=5
     )
-    parser.add_argument(
-        "--detailed",
-        action="store_true",
-        help="Run detailed capability tests on available models"
-    )
-    parser.add_argument(
-        "--save",
-        action="store_true",
-        help="Save results to JSON file"
-    )
-    parser.add_argument(
-        "--env",
-        action="store_true",
-        help="Generate environment variable configuration"
-    )
-    parser.add_argument(
-        "--test-model",
-        type=str,
-        help="Test a specific model ID"
+    return provider
+
+@pytest.mark.asyncio
+async def test_provider_initialization():
+    """Test that provider initializes correctly"""
+    provider = ClaudeLLMProvider(
+        api_key=ClaudeConfig.ANTHROPIC_API_KEY,
+        model=ClaudeConfig.CLAUDE_MODEL
     )
     
-    args = parser.parse_args()
+    assert provider is not None
+    assert provider.client is not None
+    assert provider.model == ClaudeConfig.CLAUDE_MODEL
+    assert provider.metrics["total_calls"] == 0
+
+@pytest.mark.asyncio
+async def test_basic_completion(claude_provider):
+    """Test basic text completion functionality"""
+    response = await claude_provider.get_completion(
+        prompt="Explain the concept of a moving average in trading in exactly one sentence.",
+        temperature=0.5,
+        max_tokens=100
+    )
     
+    assert response.success == True
+    assert response.content is not None and len(response.content) > 0
+    assert response.tokens_used > 0
+    assert response.processing_time > 0
+    assert response.model == claude_provider.model
+
+@pytest.mark.asyncio
+async def test_system_prompt(claude_provider):
+    """Test that system prompts work correctly"""
+    response = await claude_provider.get_completion(
+        prompt="AAPL",
+        system_prompt="You are a trading analyst. When given a stock symbol, respond with exactly 'Analyzing [SYMBOL]' and nothing else.",
+        temperature=0.1,
+        max_tokens=50
+    )
+    
+    assert response.success == True
+    assert "Analyzing AAPL" in response.content or "AAPL" in response.content
+
+@pytest.mark.asyncio
+async def test_json_parsing(claude_provider):
+    """Test JSON response parsing capability"""
+    response = await claude_provider.get_completion(
+        prompt="Create a JSON object with keys 'symbol' (value: 'TSLA'), 'action' (value: 'BUY'), and 'confidence' (value: 8). Return only valid JSON.",
+        system_prompt="You are a JSON generator. Always respond with valid JSON only, no additional text.",
+        temperature=0.1,
+        max_tokens=100,
+        parse_json=True
+    )
+    
+    assert response.success == True
+    
+    # Should be valid JSON
+    parsed = json.loads(response.content)
+    assert isinstance(parsed, dict)
+    assert "symbol" in parsed or "TSLA" in str(parsed)
+
+@pytest.mark.asyncio
+async def test_structured_technical_analysis(claude_provider):
+    """Test structured technical analysis functionality"""
+    test_data = {
+        "symbol": "GOOGL",
+        "current_price": 140.50,
+        "rsi": 45,
+        "macd": {"signal": "bearish", "histogram": -0.3},
+        "volume": "below_average",
+        "support": 135,
+        "resistance": 145,
+        "ma_50": 142,
+        "ma_200": 138
+    }
+    
+    analysis = await claude_provider.get_structured_analysis(
+        analysis_type="technical",
+        data=test_data,
+        context={"timeframe": "daily", "market_sentiment": "mixed"}
+    )
+    
+    assert "error" not in analysis
+    assert isinstance(analysis, dict)
+    # The AI might return different field names, so check if we got a meaningful response
+    assert len(analysis) > 0  # Should have some analysis fields
+
+@pytest.mark.asyncio
+async def test_structured_fundamental_analysis(claude_provider):
+    """Test structured fundamental analysis functionality"""
+    test_data = {
+        "symbol": "MSFT",
+        "pe_ratio": 32,
+        "earnings_growth": "12% YoY",
+        "revenue_growth": "8% YoY",
+        "profit_margin": 35,
+        "debt_to_equity": 0.47,
+        "roe": 38,
+        "recent_news": "Cloud revenue beat expectations"
+    }
+    
+    analysis = await claude_provider.get_structured_analysis(
+        analysis_type="fundamental",
+        data=test_data
+    )
+    
+    assert "error" not in analysis
+    assert isinstance(analysis, dict)
+    # Check that we got some analysis back (field names may vary)
+    assert len(analysis) > 0
+    # At least one of these concepts should be present in the response
+    possible_fields = ["valuation", "growth", "recommendation", "confidence", 
+                      "health_score", "risk", "analysis", "outlook"]
+    response_str = json.dumps(analysis).lower()
+    assert any(field in response_str for field in possible_fields)
+
+@pytest.mark.asyncio
+async def test_structured_risk_analysis(claude_provider):
+    """Test structured risk analysis functionality"""
+    test_data = {
+        "symbol": "NVDA",
+        "position_size": 15000,
+        "portfolio_value": 100000,
+        "volatility": "high",
+        "beta": 2.1,
+        "current_price": 850,
+        "entry_price": 800
+    }
+    
+    analysis = await claude_provider.get_structured_analysis(
+        analysis_type="risk",
+        data=test_data
+    )
+    
+    assert "error" not in analysis
+    assert isinstance(analysis, dict)
+    # Check that we got some risk analysis back
+    assert len(analysis) > 0
+    # At least one risk-related concept should be present
+    possible_fields = ["risk", "position", "stop", "var", "score", 
+                      "sizing", "exposure", "volatility"]
+    response_str = json.dumps(analysis).lower()
+    assert any(field in response_str for field in possible_fields)
+
+@pytest.mark.asyncio
+async def test_cache_functionality(claude_provider):
+    """Test that caching works correctly"""
+    # Reset metrics first
+    claude_provider.reset_metrics()
+    
+    # First call - should hit API
+    prompt = "What is 2+2? Answer with just the number."
+    response1 = await claude_provider.get_completion(
+        prompt=prompt,
+        temperature=0.1,
+        max_tokens=10,
+        use_cache=True
+    )
+    
+    assert response1.success == True
+    
+    # Second call - should use cache
+    response2 = await claude_provider.get_completion(
+        prompt=prompt,
+        temperature=0.1,
+        max_tokens=10,
+        use_cache=True
+    )
+    
+    assert response2.success == True
+    assert response2.content == response1.content
+    
+    # Check metrics
+    metrics = claude_provider.get_metrics_summary()
+    assert metrics["cache_hits"] > 0
+
+@pytest.mark.asyncio
+async def test_error_handling(claude_provider):
+    """Test error handling for invalid inputs"""
+    # Test with empty prompt
+    response = await claude_provider.get_completion(
+        prompt="",
+        max_tokens=10
+    )
+    
+    # Should handle gracefully
+    if not response.success:
+        assert response.error is not None
+
+@pytest.mark.asyncio
+async def test_rate_limiter(claude_provider):
+    """Test that rate limiting works"""
+    # This test just verifies the rate limiter exists and functions
+    assert claude_provider.rate_limiter is not None
+    
+    # Test acquire method
+    can_proceed = await claude_provider.rate_limiter.acquire()
+    assert isinstance(can_proceed, bool)
+
+@pytest.mark.asyncio
+async def test_metrics_tracking(claude_provider):
+    """Test that metrics are tracked correctly"""
+    # Reset metrics
+    claude_provider.reset_metrics()
+    
+    # Make a successful call
+    response = await claude_provider.get_completion(
+        prompt="Say 'test'",
+        max_tokens=10
+    )
+    
+    if response.success:
+        metrics = claude_provider.get_metrics_summary()
+        
+        assert metrics["total_calls"] > 0
+        assert metrics["success_rate"] > 0
+        assert metrics["average_response_time"] > 0
+        # Fixed: Use correct key name
+        assert metrics["average_tokens_per_call"] > 0 or metrics.get("total_tokens", 0) > 0
+
+@pytest.mark.asyncio
+async def test_trading_scenario(claude_provider):
+    """Test a realistic trading analysis scenario"""
+    junior_prompt = """Analyze NVDA for trading with this data:
+    Price: $850, RSI: 72, MACD: Bullish, Volume: +20% avg
+    Recent: Beat earnings by 15%, new AI partnership
+
+    Provide JSON with: direction, confidence (1-10), entry_price, stop_loss"""
+    
+    response = await claude_provider.get_completion(
+        prompt=junior_prompt,
+        system_prompt="You are a trading analyst. Respond with valid JSON only.",
+        temperature=0.3,
+        parse_json=True
+    )
+    
+    assert response.success == True
+    
+    # Try to parse as JSON
     try:
-        tester = ClaudeModelTester()
-        
-        if args.test_model:
-            # Test specific model
-            print(f"Testing {args.test_model}...")
-            result = tester.test_model(args.test_model)
-            print(f"Result: {json.dumps(result, indent=2)}")
-            
-            if result["status"] == "available" and args.detailed:
-                capabilities = tester.test_model_capabilities(args.test_model)
-                print(f"\nCapabilities: {json.dumps(capabilities, indent=2)}")
-        else:
-            # Discover all models
-            results = tester.discover_all_models()
-            recommendations = tester.recommend_configuration(results)
-            
-            # Run detailed tests if requested
-            if args.detailed and recommendations:
-                print("\n" + "="*60)
-                print("DETAILED CAPABILITY TESTING")
-                print("="*60)
-                for tier, model_id in recommendations.items():
-                    capabilities = tester.test_model_capabilities(model_id)
-                    results[model_id]["capabilities"] = capabilities
-            
-            # Save results if requested
-            if args.save:
-                tester.save_results()
-            
-            # Generate env config if requested
-            if args.env:
-                print("\n" + "="*60)
-                print("ENVIRONMENT CONFIGURATION")
-                print("="*60)
-                print(tester.generate_env_config())
-                
-                # Optionally save to file
-                env_file = Path(".env.claude")
-                with open(env_file, 'w') as f:
-                    f.write(tester.generate_env_config())
-                print(f"\n💾 Environment config saved to {env_file}")
-    
-    except Exception as e:
-        print(f"\n❌ Error: {e}")
-        sys.exit(1)
+        analysis = json.loads(response.content)
+        assert isinstance(analysis, dict)
+        # Should have at least some trading-related fields
+        trading_fields = ["direction", "confidence", "entry", "stop", "buy", "sell", "hold"]
+        assert any(field in str(analysis).lower() for field in trading_fields)
+    except json.JSONDecodeError:
+        # If not pure JSON, at least check it has trading content
+        assert any(word in response.content.lower() for word in ["buy", "sell", "hold", "bullish", "bearish"])
 
+# Performance/Load Tests (optional - mark as slow)
+@pytest.mark.slow
+@pytest.mark.asyncio
+async def test_multiple_concurrent_requests(claude_provider):
+    """Test handling multiple concurrent requests"""
+    prompts = [
+        "What is RSI in trading?",
+        "Explain MACD indicator",
+        "What is a stop loss?",
+        "Define market cap",
+        "What is P/E ratio?"
+    ]
+    
+    # Create concurrent tasks
+    tasks = [
+        claude_provider.get_completion(prompt, max_tokens=50)
+        for prompt in prompts
+    ]
+    
+    # Execute concurrently
+    responses = await asyncio.gather(*tasks)
+    
+    # All should succeed
+    assert all(r.success for r in responses)
+    assert all(r.content for r in responses)
+
+# Utility function to run standalone
+def run_tests_standalone():
+    """Run tests without pytest (for debugging)"""
+    import asyncio
+    
+    async def run():
+        print("🧪 Running Claude Provider Tests (Standalone Mode)\n")
+        
+        # Validate config
+        if not ClaudeConfig.validate():
+            print("❌ Configuration validation failed")
+            return False
+        
+        # Initialize provider
+        provider = ClaudeLLMProvider(
+            api_key=ClaudeConfig.ANTHROPIC_API_KEY,
+            model=ClaudeConfig.CLAUDE_MODEL
+        )
+        
+        # Run basic test
+        print("Testing basic completion...")
+        response = await provider.get_completion(
+            prompt="What is a moving average?",
+            max_tokens=100
+        )
+        
+        if response.success:
+            print(f"✅ Basic test passed: {response.content[:100]}...")
+            return True
+        else:
+            print(f"❌ Basic test failed: {response.error}")
+            return False
+    
+    return asyncio.run(run())
 
 if __name__ == "__main__":
-    main()
+    # If run directly, use standalone mode
+    success = run_tests_standalone()
+    sys.exit(0 if success else 1)

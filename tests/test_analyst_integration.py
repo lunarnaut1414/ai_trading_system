@@ -12,7 +12,7 @@ import numpy as np
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 # Import agents with correct module paths
-from agents.junior_research_analyst import (
+from src.agents.junior_analyst import (
     JuniorResearchAnalyst,
     MarketContextManager,
     UnifiedRiskAssessment,
@@ -21,7 +21,7 @@ from agents.junior_research_analyst import (
     ConvictionLevel,
     JuniorAnalystPool  # Import from junior_research_analyst
 )
-from agents.senior_research_analyst import (
+from src.agents.senior_analyst import (
     SeniorResearchAnalyst,
     MarketContextAnalyzer  # Import from senior_research_analyst
 )

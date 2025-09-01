@@ -14,7 +14,7 @@ from datetime import datetime
 
 from orchestration.workflow_engine import WorkflowEngine
 from orchestration.daily_workflow import DailyTradingWorkflow
-from orchestration.orchestration_spec import OrchestrationEvent, TaskStatus
+from src.orchestration.orchestration_spec import OrchestrationEvent, TaskStatus
 
 class OrchestrationController:
     """
@@ -125,12 +125,12 @@ class OrchestrationController:
         self.logger.info("🔄 Initializing agents...")
         
         # Import all agents
-        from agents.junior_research_analyst import JuniorResearchAnalyst
-        from agents.senior_research_analyst import SeniorResearchAnalyst
-        from agents.economist_agent import EconomistAgent
+        from agents.junior_analyst import JuniorResearchAnalyst
+        from agents.senior_analyst import SeniorResearchAnalyst
+        from agents.economist import EconomistAgent
         from agents.portfolio_manager import PortfolioManagerAgent
-        from agents.trade_execution_agent import TradeExecutionAgent
-        from agents.analytics_reporting_agent import AnalyticsReportingAgent
+        from agents.trade_executor import TradeExecutionAgent
+        from agents.analytics_reporter import AnalyticsReportingAgent
         
         # Create agent instances
         self.agents = {

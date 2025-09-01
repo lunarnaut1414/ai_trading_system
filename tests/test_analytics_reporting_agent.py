@@ -13,7 +13,7 @@ import json
 import tempfile
 import shutil
 
-from agents.analytics_reporting_agent import (
+from src.agents.analytics_reporter import (
     AnalyticsReportingAgent,
     PerformanceAnalytics,
     ReportManager,
@@ -121,7 +121,7 @@ def analytics_agent(mock_config, mock_data_provider, mock_db_manager, mock_llm_p
     """Create analytics & reporting agent instance - NOT async"""
     
     # Patch the reports directory
-    with patch('agents.analytics_reporting_agent.Path') as mock_path:
+    with patch('src.agents.analytics_reporter.Path') as mock_path:
         mock_path.return_value = Path(temp_reports_dir) / 'reports'
         
         agent = AnalyticsReportingAgent(

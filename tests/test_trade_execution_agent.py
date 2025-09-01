@@ -14,7 +14,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 # Import the components to test
-from agents.trade_execution_agent import (
+from src.agents.trade_executor import (
     TradeExecutionAgent,
     ExecutionTimingEngine,
     OrderManager,

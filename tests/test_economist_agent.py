@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 
 # Import the economist agent and related classes
-from agents.economist_agent import (
+from src.agents.economist import (
     EconomistAgent,
     EconomicDataAnalyzer,
     MacroThemeIdentifier,
@@ -29,7 +29,7 @@ from agents.economist_agent import (
 )
 
 # Import shared components
-from agents.junior_research_analyst import (
+from src.agents.junior_analyst import (
     MarketContextManager,
     IntelligentCacheManager,
     AnalysisMetadataTracker

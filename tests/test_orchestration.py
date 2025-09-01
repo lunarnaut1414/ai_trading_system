@@ -1,7 +1,7 @@
 """
 Comprehensive test suite for AI Trading System orchestration module
 Tests WorkflowEngine, DailyTradingWorkflow, OrchestrationController
-Fixed to work with actual implementation
+Fixed to match actual workflow_engine implementation
 """
 
 import pytest
@@ -39,19 +39,49 @@ def mock_config():
 
 @pytest.fixture
 def mock_agents():
-    """Create mock agents dictionary with proper async handling"""
+    """Create mock agents dictionary with proper async handling matching workflow_engine expectations"""
     agents = {}
     agent_names = ['junior_analyst', 'senior_analyst', 'economist', 
                    'portfolio_manager', 'trade_execution', 'analytics_reporting']
     
     for name in agent_names:
         agent = Mock()
-        # AsyncMock creates a proper coroutine when called
-        agent.process = AsyncMock(return_value={'status': 'success', 'data': f'{name}_result'})
+        
+        # Create a default async method that returns success
+        async def default_method(**kwargs):
+            return {'status': 'success', 'data': f'{name}_result'}
+        
+        # Set up the analyze method as the default fallback
         agent.analyze = AsyncMock(return_value={'status': 'success', 'data': f'{name}_result'})
+        
+        # Set up specific execute_* methods for different task types
+        agent.execute_test = AsyncMock(return_value={'status': 'success', 'data': 'test_result'})
+        agent.execute_test_retry = AsyncMock(return_value={'status': 'success', 'data': 'test_retry_result'})
+        agent.execute_market_analysis = AsyncMock(return_value={'status': 'success', 'data': 'market_analysis_result'})
+        agent.execute_macro_analysis = AsyncMock(return_value={'status': 'success', 'data': 'macro_analysis_result'})
+        agent.execute_position_evaluation = AsyncMock(return_value={'status': 'success', 'data': 'position_evaluation_result'})
+        agent.execute_portfolio_review = AsyncMock(return_value={'status': 'success', 'data': 'portfolio_review_result'})
+        agent.execute_opportunity_assessment = AsyncMock(return_value={'status': 'success', 'data': 'opportunity_assessment_result'})
+        agent.execute_generate_trades = AsyncMock(return_value={'status': 'success', 'data': 'generate_trades_result'})
+        agent.execute_execute_trades = AsyncMock(return_value={'status': 'success', 'data': 'execute_trades_result'})
+        agent.execute_risk_monitoring = AsyncMock(return_value={'status': 'success', 'data': 'risk_monitoring_result'})
+        agent.execute_monitor_orders = AsyncMock(return_value={'status': 'success', 'data': 'monitor_orders_result'})
+        agent.execute_intraday_monitoring = AsyncMock(return_value={'status': 'success', 'data': 'intraday_monitoring_result'})
+        agent.execute_daily_performance = AsyncMock(return_value={'status': 'success', 'data': 'daily_performance_result'})
+        agent.execute_end_of_day_review = AsyncMock(return_value={'status': 'success', 'data': 'end_of_day_review_result'})
+        agent.execute_generate_reports = AsyncMock(return_value={'status': 'success', 'data': 'generate_reports_result'})
+        agent.execute_concurrent_test = AsyncMock(return_value={'status': 'success', 'data': 'concurrent_test_result'})
+        agent.execute_process = AsyncMock(return_value={'status': 'success', 'data': 'process_result'})
+        agent.execute_evaluate = AsyncMock(return_value={'status': 'success', 'data': 'evaluate_result'})
+        
+        # Add process method for backward compatibility
+        agent.process = AsyncMock(return_value={'status': 'success', 'data': f'{name}_result'})
+        
+        # Add other required methods
         agent.initialize = AsyncMock()
         agent.health_check = AsyncMock(return_value={'healthy': True})
         agent.shutdown = AsyncMock()
+        
         agents[name] = agent
     
     return agents
@@ -144,16 +174,9 @@ class TestWorkflowEngine:
         assert execution.current_stage == WorkflowStage.PRE_MARKET
     
     @pytest.mark.asyncio
-    async def test_workflow_execution_success(self, mock_config):
+    async def test_workflow_execution_success(self, mock_config, mock_agents):
         """Test successful workflow execution with proper async agents"""
-        # Create agents with real async functions
-        async def mock_process(task_data):
-            return {'status': 'success', 'data': 'test_result'}
-        
-        mock_agents = {
-            'junior_analyst': Mock(process=mock_process)
-        }
-        
+        # The mock_agents fixture now has proper execute_* methods
         engine = WorkflowEngine(mock_agents, mock_config)
         
         workflow_def = {
@@ -282,18 +305,23 @@ class TestWorkflowEngine:
         """Test task retry on failure"""
         call_count = 0
         
-        async def failing_process(task_data):
+        async def failing_process(**kwargs):
             nonlocal call_count
             call_count += 1
             if call_count < 3:
                 raise Exception(f"Simulated failure {call_count}")
             return {'status': 'success', 'attempt': call_count}
         
+        # Create a mock agent with the failing async function
+        mock_agent = Mock()
+        # The workflow engine will look for execute_test_retry method
+        mock_agent.execute_test_retry = failing_process
+        # Add fallback analyze method
+        mock_agent.analyze = failing_process
+        
         mock_agents = {
-            'junior_analyst': Mock()
+            'junior_analyst': mock_agent
         }
-        # Assign the actual async function, not a Mock wrapper
-        mock_agents['junior_analyst'].process = failing_process
         
         engine = WorkflowEngine(mock_agents, mock_config)
         
@@ -324,7 +352,7 @@ class TestWorkflowEngine:
         """Test concurrent execution of independent tasks"""
         execution_times = []
         
-        async def timed_process(task_data):
+        async def timed_process(**kwargs):
             start = datetime.now()
             await asyncio.sleep(0.05)
             execution_times.append(start)
@@ -333,8 +361,9 @@ class TestWorkflowEngine:
         mock_agents = {}
         for name in ['junior_analyst', 'economist', 'senior_analyst']:
             agent = Mock()
-            # Assign the actual async function
-            agent.process = timed_process
+            # Set both execute_ method and analyze as fallback
+            agent.execute_concurrent_test = timed_process
+            agent.analyze = timed_process
             mock_agents[name] = agent
         
         engine = WorkflowEngine(mock_agents, mock_config)
@@ -374,15 +403,11 @@ class TestWorkflowEngine:
         async def event_handler(event, data):
             events_received.append((event, data))
         
-        # Register event handlers using the actual implementation method
+        # Register event handlers
         workflow_engine.event_handlers[OrchestrationEvent.WORKFLOW_STARTED] = [event_handler]
         workflow_engine.event_handlers[OrchestrationEvent.WORKFLOW_COMPLETED] = [event_handler]
         workflow_engine.event_handlers[OrchestrationEvent.TASK_STARTED] = [event_handler]
         workflow_engine.event_handlers[OrchestrationEvent.TASK_COMPLETED] = [event_handler]
-        
-        # Create agents with proper async methods
-        for agent in workflow_engine.agents.values():
-            agent.process = AsyncMock(return_value={'status': 'success'})
         
         execution_id = await workflow_engine.create_workflow(sample_workflow_definition)
         await workflow_engine.execute_workflow(execution_id)
@@ -449,7 +474,6 @@ class TestDailyTradingWorkflow:
         # Test expiration workflow
         expiration_def = workflow._create_expiration_workflow()
         assert expiration_def['name'] == 'Options Expiration Day'
-        # Check for manage_expirations task instead of expiration_risk
         assert 'manage_expirations' in str(expiration_def)
     
     @pytest.mark.asyncio
@@ -458,9 +482,7 @@ class TestDailyTradingWorkflow:
         mock_engine = Mock()
         workflow = DailyTradingWorkflow(mock_engine, mock_config)
         
-        # Create a mock datetime that returns proper date object
         with patch('orchestration.daily_workflow.datetime') as mock_datetime:
-            # Create a date object for Saturday
             saturday_date = Mock()
             saturday_date.weekday.return_value = 5  # Saturday
             saturday_date.date.return_value = saturday_date
@@ -494,7 +516,6 @@ class TestDailyTradingWorkflow:
         
         workflow = DailyTradingWorkflow(mock_engine, mock_config)
         
-        # Mock weekday
         with patch('orchestration.daily_workflow.datetime') as mock_datetime:
             tuesday_date = Mock()
             tuesday_date.weekday.return_value = 1  # Tuesday
@@ -518,7 +539,6 @@ class TestDailyTradingWorkflow:
     async def test_workflow_status_monitoring(self, mock_config):
         """Test workflow status monitoring"""
         mock_engine = Mock()
-        # Create a proper mock execution with all required attributes
         mock_execution = Mock()
         mock_execution.tasks = {
             "task1": Mock(status=TaskStatus.COMPLETED),
@@ -534,7 +554,6 @@ class TestDailyTradingWorkflow:
         workflow = DailyTradingWorkflow(mock_engine, mock_config)
         workflow.current_execution_id = "test_id"
         
-        # get_workflow_status is async, so await it
         status = await workflow.get_workflow_status()
         
         assert status['execution_id'] == "test_id"
@@ -546,7 +565,6 @@ class TestDailyTradingWorkflow:
         mock_engine = Mock()
         workflow = DailyTradingWorkflow(mock_engine, mock_config)
         
-        # The method returns None after logging, so we just verify it doesn't crash
         workflow_def = {
             'stages': {
                 'pre_market': {
@@ -561,9 +579,8 @@ class TestDailyTradingWorkflow:
             }
         }
         
-        # Should not raise an exception
+        # Method returns None after logging
         result = workflow._adjust_for_high_volatility(workflow_def)
-        # Method returns None, which is expected
         assert result is None
 
 
@@ -591,14 +608,12 @@ class TestOrchestrationController:
         """Test system startup sequence"""
         controller = OrchestrationController(mock_config)
         
-        # Mock all required components
         controller._initialize_data_provider = AsyncMock()
         controller._initialize_llm_provider = AsyncMock()
         controller._initialize_agents = AsyncMock()
         controller._initialize_workflow_engine = AsyncMock()
         controller._setup_event_handlers = AsyncMock()
         
-        # Mock health check components with 'healthy' key
         controller.data_provider = Mock()
         controller.data_provider.health_check = AsyncMock(return_value={'healthy': True, 'status': 'ok'})
         controller.llm_provider = Mock()
@@ -637,7 +652,6 @@ class TestOrchestrationController:
         """Test event handler registration"""
         controller = OrchestrationController(mock_config)
         
-        # Create mock workflow engine with proper event_handlers dict
         mock_engine = Mock()
         mock_engine.event_handlers = {
             OrchestrationEvent.WORKFLOW_STARTED: [],
@@ -650,7 +664,6 @@ class TestOrchestrationController:
         
         await controller._setup_event_handlers()
         
-        # Verify handlers were added
         assert len(mock_engine.event_handlers[OrchestrationEvent.WORKFLOW_STARTED]) > 0
         assert len(mock_engine.event_handlers[OrchestrationEvent.WORKFLOW_COMPLETED]) > 0
     
@@ -659,13 +672,11 @@ class TestOrchestrationController:
         """Test health check execution with failure handling"""
         controller = OrchestrationController(mock_config)
         
-        # Setup required providers with 'healthy' key
         controller.data_provider = Mock()
         controller.data_provider.health_check = AsyncMock(return_value={'healthy': True, 'status': 'ok'})
         controller.llm_provider = Mock()
         controller.llm_provider.health_check = AsyncMock(return_value={'healthy': True, 'status': 'ok'})
         
-        # Setup agents - one healthy, one unhealthy
         mock_agent1 = Mock()
         mock_agent1.health_check = AsyncMock(return_value={'healthy': True, 'status': 'ok'})
         mock_agent2 = Mock()
@@ -676,7 +687,6 @@ class TestOrchestrationController:
             'agent2': mock_agent2
         }
         
-        # The method raises an exception when an agent fails health check
         with pytest.raises(Exception) as exc_info:
             await controller._perform_health_checks()
         
@@ -790,31 +800,20 @@ class TestOrchestrationIntegration:
     """Integration tests for the orchestration system"""
     
     @pytest.mark.asyncio
-    async def test_end_to_end_workflow_execution(self, mock_config):
+    async def test_end_to_end_workflow_execution(self, mock_config, mock_agents):
         """Test complete workflow execution from controller to agents"""
         controller = OrchestrationController(mock_config)
         
         controller._initialize_data_provider = AsyncMock()
         controller._initialize_llm_provider = AsyncMock()
         
-        # Create ALL required agents with real async functions
-        async def mock_process(task_data):
-            return {'status': 'success', 'data': 'result'}
-        
-        mock_agents = {}
-        for name in ['junior_analyst', 'senior_analyst', 'economist', 
-                     'portfolio_manager', 'trade_execution', 'analytics_reporting']:
-            agent = Mock()
-            agent.process = mock_process  # All agents can share the same function
-            mock_agents[name] = agent
-        
+        # Use the fixture mock_agents which have proper execute_* methods
         controller.agents = mock_agents
         controller.workflow_engine = WorkflowEngine(mock_agents, mock_config)
         controller.daily_workflow = DailyTradingWorkflow(controller.workflow_engine, mock_config)
         
         await controller._setup_event_handlers()
         
-        # Mock weekday
         with patch('orchestration.daily_workflow.datetime') as mock_datetime:
             tuesday = Mock()
             tuesday.weekday.return_value = 1
@@ -836,7 +835,6 @@ class TestOrchestrationIntegration:
         """Test system resilience to various failure modes"""
         controller = OrchestrationController(mock_config)
         
-        # Test graceful handling of initialization failures
         controller._initialize_data_provider = AsyncMock(
             side_effect=Exception("Temporary failure")
         )
@@ -857,26 +855,14 @@ class TestPerformance:
     """Performance tests for orchestration system"""
     
     @pytest.mark.asyncio
-    async def test_workflow_with_valid_stages(self, mock_config):
+    async def test_workflow_with_valid_stages(self, mock_config, mock_agents):
         """Test workflow with valid stage names"""
-        mock_agents = {}
-        for i in range(5):
-            agent = Mock()
-            agent.process = AsyncMock(return_value={'status': 'success', 'index': i})
-            mock_agents[f'agent_{i}'] = agent
-        
-        # Add standard agents
-        for name in ['junior_analyst', 'economist', 'portfolio_manager']:
-            agent = Mock()
-            agent.process = AsyncMock(return_value={'status': 'success'})
-            mock_agents[name] = agent
-        
+        # Use the mock_agents fixture which already has proper execute_* methods
         engine = WorkflowEngine(mock_agents, mock_config)
         
-        # Use valid workflow stages
         workflow_def = {
             'stages': {
-                'pre_market': {  # Valid stage name
+                'pre_market': {
                     'tasks': [
                         {
                             'agent': 'junior_analyst',
@@ -890,7 +876,7 @@ class TestPerformance:
                         for i in range(3)
                     ]
                 },
-                'market_open': {  # Valid stage name
+                'market_open': {
                     'tasks': [
                         {
                             'agent': 'portfolio_manager',

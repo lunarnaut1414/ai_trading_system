@@ -25,8 +25,8 @@ import statistics
 from collections import defaultdict
 import uuid
 
-# Import shared components from junior_research_analyst
-from agents.junior_research_analyst import (
+# Import shared components from junior_analyst
+from src.agents.junior_analyst import (
     MarketContextManager,
     UnifiedRiskAssessment,
     IntelligentCacheManager,

@@ -1,4 +1,4 @@
-# agents/junior_research_analyst.py
+# agents/junior_analyst.py
 """
 Enhanced Junior Research Analyst Agent - Complete Integrated Implementation
 Optimized for macOS M2 Max with Claude AI integration
@@ -531,7 +531,7 @@ class JuniorResearchAnalyst:
     def __init__(self, llm_provider, alpaca_provider, config):
         """Initialize the Enhanced Junior Research Analyst"""
         
-        self.agent_name = "junior_research_analyst"
+        self.agent_name = "junior_analyst"
         self.agent_id = str(uuid.uuid4())
         
         # Core dependencies

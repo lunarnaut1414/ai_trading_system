@@ -25,7 +25,7 @@ import uuid
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.junior_research_analyst import (
+from src.agents.junior_analyst import (
     JuniorResearchAnalyst,
     AnalysisType,
     RecommendationType,
@@ -288,7 +288,7 @@ class TestAgentInitialization:
     def test_agent_creation(self, junior_analyst):
         """Test agent is created successfully"""
         assert junior_analyst is not None
-        assert junior_analyst.agent_name == "junior_research_analyst"
+        assert junior_analyst.agent_name == "junior_analyst"
         assert junior_analyst.agent_id is not None
         assert isinstance(junior_analyst.agent_id, str)
         assert len(junior_analyst.agent_id) == 36  # UUID length
@@ -306,7 +306,7 @@ class TestAgentInitialization:
         analyst = create_junior_analyst(mock_llm_provider, mock_alpaca_provider, mock_config)
         
         assert isinstance(analyst, JuniorResearchAnalyst)
-        assert analyst.agent_name == "junior_research_analyst"
+        assert analyst.agent_name == "junior_analyst"
     
     def test_agent_has_required_methods(self, junior_analyst):
         """Test agent has all required methods"""
@@ -699,7 +699,7 @@ class TestSmoke:
     def test_agent_exists(self, junior_analyst):
         """Test agent exists and is initialized"""
         assert junior_analyst is not None
-        assert junior_analyst.agent_name == "junior_research_analyst"
+        assert junior_analyst.agent_name == "junior_analyst"
     
     def test_performance_metrics_exist(self, junior_analyst):
         """Test performance metrics are tracked"""

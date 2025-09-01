@@ -24,7 +24,7 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.senior_research_analyst import (
+from src.agents.senior_analyst import (
     SeniorResearchAnalyst,
     StrategicAnalysisEngine,
     MarketContextAnalyzer,
@@ -417,7 +417,7 @@ class TestSeniorResearchAnalyst:
         """Test agent initialization"""
         analyst = await senior_analyst
         
-        assert analyst.agent_name == "senior_research_analyst"
+        assert analyst.agent_name == "senior_analyst"
         assert analyst.agent_id is not None
         assert analyst.strategic_engine is not None
         assert analyst.market_analyzer is not None

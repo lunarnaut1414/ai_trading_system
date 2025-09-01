@@ -1401,12 +1401,12 @@ async def test_trade_execution_agent():
     
     from config.settings import TradingConfig
     from data.alpaca_provider import AlpacaProvider
-    from utils.llm_provider import LLMProvider
+    from llm_providers.claude_llm_provider import ClaudeLLMProvider
     
     # Initialize components
     config = TradingConfig()
     alpaca = AlpacaProvider(config)
-    llm = LLMProvider(config)
+    llm = ClaudeLLMProvider(config)
     
     # Create Trade Execution Agent
     execution_agent = TradeExecutionAgent(llm, alpaca, config)

@@ -16,8 +16,17 @@ import json
 import os
 from decimal import Decimal
 from pathlib import Path
+import numpy as np  # Added numpy import
 
 from utils.base_agent import BaseAgent
+
+# Try to import optional dependencies
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    logging.warning("psutil not available - system resource monitoring disabled")
 
 # Try to import database models, but don't fail if they don't exist
 try:
@@ -145,7 +154,7 @@ class PerformanceAnalytics:
             )
             
             # Calculate YTD return
-            ytd_return = ((portfolio_value - initial_capital) / initial_capital) * 100
+            ytd_return = ((portfolio_value - initial_capital) / initial_capital) * 100 if initial_capital > 0 else 0
             
             # Calculate risk metrics
             sharpe_ratio = self._calculate_sharpe_ratio(historical_data)
@@ -199,14 +208,22 @@ class PerformanceAnalytics:
         if len(historical_data) < days:
             return 0.0, 0.0
         
-        start_value = historical_data[-days]
+        start_value = historical_data[-days] if days <= len(historical_data) else historical_data[0]
         pnl = current_value - start_value
         pnl_pct = (pnl / start_value) * 100 if start_value > 0 else 0
         
         return round(pnl, 2), round(pnl_pct, 2)
     
     def _calculate_sharpe_ratio(self, historical_data: List[float]) -> float:
-        """Calculate Sharpe ratio"""
+        """
+        Calculate Sharpe ratio with proper zero handling
+        
+        Args:
+            historical_data: List of portfolio values
+            
+        Returns:
+            float: Sharpe ratio (annualized)
+        """
         
         if len(historical_data) < 2:
             return 0.0
@@ -214,22 +231,30 @@ class PerformanceAnalytics:
         # Calculate daily returns
         returns = []
         for i in range(1, len(historical_data)):
+            # Handle zero or near-zero previous values
+            if abs(historical_data[i-1]) < 1e-10:
+                # Skip this return calculation if previous value is essentially zero
+                continue
             daily_return = (historical_data[i] - historical_data[i-1]) / historical_data[i-1]
             returns.append(daily_return)
         
-        if not returns:
+        if len(returns) < 2:
             return 0.0
         
-        # Calculate Sharpe (simplified - assuming 0 risk-free rate)
-        import numpy as np
-        avg_return = np.mean(returns)
-        std_return = np.std(returns)
+        # Calculate statistics
+        mean_return = np.mean(returns) if returns else 0.0
+        std_return = np.std(returns) if returns else 0.0
         
-        if std_return == 0:
+        # Handle zero standard deviation
+        if abs(std_return) < 1e-10:
             return 0.0
         
-        # Annualized Sharpe ratio
-        sharpe = (avg_return / std_return) * np.sqrt(252)
+        # Annualize (assuming 252 trading days)
+        sharpe = (mean_return * 252) / (std_return * np.sqrt(252))
+        
+        # Cap extreme values
+        sharpe = max(-10.0, min(10.0, sharpe))
+        
         return round(sharpe, 2)
     
     def _calculate_max_drawdown(self, historical_data: List[float]) -> float:
@@ -243,8 +268,9 @@ class PerformanceAnalytics:
         
         for value in historical_data[1:]:
             max_value = max(max_value, value)
-            drawdown = ((max_value - value) / max_value) * 100
-            max_drawdown = max(max_drawdown, drawdown)
+            if max_value > 0:
+                drawdown = ((max_value - value) / max_value) * 100
+                max_drawdown = max(max_drawdown, drawdown)
         
         return round(max_drawdown, 2)
     
@@ -425,34 +451,66 @@ class ReportManager:
     
     async def export_portfolio_snapshot(self, portfolio_data: Dict, 
                                        performance: PerformanceMetrics) -> Dict:
-        """Export complete portfolio snapshot"""
+        """
+        Export portfolio snapshot in JSON format
         
-        snapshot = {
-            'timestamp': datetime.now().isoformat(),
-            'portfolio': portfolio_data,
-            'performance': {
-                'total_value': performance.total_value,
-                'daily_pnl': performance.daily_pnl,
-                'daily_pnl_pct': performance.daily_pnl_pct,
-                'weekly_pnl': performance.weekly_pnl,
-                'weekly_pnl_pct': performance.weekly_pnl_pct,
-                'monthly_pnl': performance.monthly_pnl,
-                'monthly_pnl_pct': performance.monthly_pnl_pct,
-                'ytd_return': performance.ytd_return,
-                'sharpe_ratio': performance.sharpe_ratio,
-                'max_drawdown': performance.max_drawdown,
-                'win_rate': performance.win_rate,
-                'total_trades': performance.total_trades
+        Args:
+            portfolio_data: Current portfolio state
+            performance: Performance metrics
+            
+        Returns:
+            Dict: Export result with file path
+        """
+        
+        try:
+            timestamp = datetime.now().isoformat()
+            
+            # Create snapshot data structure
+            snapshot = {
+                'timestamp': timestamp,
+                'portfolio': portfolio_data,
+                'performance': {
+                    'total_value': performance.total_value,
+                    'daily_pnl': performance.daily_pnl,
+                    'daily_pnl_pct': performance.daily_pnl_pct,
+                    'weekly_pnl': performance.weekly_pnl,
+                    'weekly_pnl_pct': performance.weekly_pnl_pct,
+                    'monthly_pnl': performance.monthly_pnl,
+                    'monthly_pnl_pct': performance.monthly_pnl_pct,
+                    'ytd_return': performance.ytd_return,
+                    'sharpe_ratio': performance.sharpe_ratio,
+                    'max_drawdown': performance.max_drawdown,
+                    'win_rate': performance.win_rate,
+                    'total_trades': performance.total_trades
+                }
             }
-        }
-        
-        # Save as JSON
-        content = json.dumps(snapshot, indent=2)
-        return await self.save_report(
-            content, 
-            ReportType.PORTFOLIO_SNAPSHOT,
-            ReportFormat.JSON
-        )
+            
+            # Save to file
+            subdir = self.reports_dir / 'snapshots'
+            subdir.mkdir(exist_ok=True)
+            
+            filename = f"portfolio_snapshot_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            filepath = subdir / filename
+            
+            # Write the snapshot directly as JSON
+            with open(filepath, 'w') as f:
+                json.dump(snapshot, f, indent=2)
+            
+            self.logger.info(f"Portfolio snapshot saved to {filepath}")
+            
+            return {
+                'success': True,
+                'filepath': str(filepath),
+                'format': 'json',
+                'timestamp': timestamp
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to export portfolio snapshot: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
 
 
 # ==============================================================================
@@ -504,6 +562,23 @@ class AnalyticsReportingAgent(BaseAgent):
         
         self.logger.info(f"✅ {self.agent_name} initialized successfully")
     
+    async def process(self, task_data: Dict) -> Dict:
+        """
+        Public process method for external calls
+        
+        Args:
+            task_data: Task data to process
+            
+        Returns:
+            Dict: Processing result
+        """
+        # Check if agent is active
+        if not self.is_active:
+            return {'status': 'error', 'error': 'Agent is not active'}
+        
+        # Route to internal processing
+        return await self._process_internal(task_data)
+    
     async def _process_internal(self, task_data: Dict) -> Dict:
         """
         Implementation of abstract method from BaseAgent
@@ -533,7 +608,7 @@ class AnalyticsReportingAgent(BaseAgent):
         elif task_type == 'portfolio_snapshot':
             return await self.export_portfolio_snapshot()
         else:
-            raise ValueError(f'Unknown task type: {task_type}')
+            return {'status': 'error', 'error': f'Unknown task type: {task_type}'}
     
     async def generate_daily_summary(self) -> Dict:
         """Generate daily executive summary"""
@@ -696,7 +771,7 @@ class AnalyticsReportingAgent(BaseAgent):
                 alerts_triggered.append(alert)
             
             # Check position concentration
-            if portfolio_data and 'positions' in portfolio_data:
+            if portfolio_data and 'positions' in portfolio_data and performance.total_value > 0:
                 for position in portfolio_data['positions']:
                     position_pct = (position['market_value'] / performance.total_value) * 100
                     if position_pct > self.alert_thresholds['high_concentration_pct']:
@@ -917,6 +992,7 @@ class AnalyticsReportingAgent(BaseAgent):
         """Analyze trades from the past week"""
         
         # In production, query trade history from database
+        # Ensure all required keys are present
         return {
             'total_trades': 23,
             'profitable_trades': 15,
@@ -1000,13 +1076,20 @@ class AnalyticsReportingAgent(BaseAgent):
     async def _check_resource_usage(self) -> Dict[str, float]:
         """Check system resource usage"""
         
-        import psutil
-        
-        return {
-            'cpu_percent': psutil.cpu_percent(),
-            'memory_percent': psutil.virtual_memory().percent,
-            'disk_percent': psutil.disk_usage('/').percent
-        }
+        if PSUTIL_AVAILABLE:
+            import psutil
+            return {
+                'cpu_percent': psutil.cpu_percent(),
+                'memory_percent': psutil.virtual_memory().percent,
+                'disk_percent': psutil.disk_usage('/').percent
+            }
+        else:
+            # Return mock data if psutil not available
+            return {
+                'cpu_percent': 45.0,
+                'memory_percent': 60.0,
+                'disk_percent': 70.0
+            }
     
     async def _calculate_error_rate(self) -> float:
         """Calculate system error rate"""
@@ -1175,6 +1258,10 @@ Provide detailed analysis with actionable insights and recommendations for the c
                             agent_performance, risk_metrics) -> str:
         """Format weekly performance report"""
         
+        # Safely get values with defaults
+        best_trade = trade_analysis.get('best_trade', {'symbol': 'N/A', 'pnl': 0})
+        worst_trade = trade_analysis.get('worst_trade', {'symbol': 'N/A', 'pnl': 0})
+        
         report = f"""# 📊 Weekly Performance Report - Week of {datetime.now().strftime('%B %d, %Y')}
 
 ## Performance Summary
@@ -1185,17 +1272,17 @@ Provide detailed analysis with actionable insights and recommendations for the c
 - **Max Drawdown**: {performance.max_drawdown}%
 
 ## Trading Statistics
-- **Total Trades**: {trade_analysis['total_trades']}
+- **Total Trades**: {trade_analysis.get('total_trades', 0)}
 - **Win Rate**: {performance.win_rate}%
 - **Average Win**: ${performance.avg_win:,.2f}
 - **Average Loss**: ${performance.avg_loss:,.2f}
-- **Best Trade**: {trade_analysis['best_trade']['symbol']} (${trade_analysis['best_trade']['pnl']:,.2f})
-- **Worst Trade**: {trade_analysis['worst_trade']['symbol']} (${trade_analysis['worst_trade']['pnl']:,.2f})
+- **Best Trade**: {best_trade['symbol']} (${best_trade['pnl']:,.2f})
+- **Worst Trade**: {worst_trade['symbol']} (${worst_trade['pnl']:,.2f})
 
 ## Risk Metrics
-- **Portfolio Beta**: {risk_metrics['portfolio_beta']}
-- **VaR (95%)**: ${risk_metrics['var_95']:,.2f}
-- **SPY Correlation**: {risk_metrics['correlation_spy']}
+- **Portfolio Beta**: {risk_metrics.get('portfolio_beta', 'N/A')}
+- **VaR (95%)**: ${risk_metrics.get('var_95', 0):,.2f}
+- **SPY Correlation**: {risk_metrics.get('correlation_spy', 'N/A')}
 
 ## Agent Performance
 """

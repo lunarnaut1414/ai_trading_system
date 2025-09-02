@@ -11,7 +11,7 @@ from typing import Dict, Optional, Any
 from datetime import datetime, time
 
 from orchestration.workflow_engine import WorkflowEngine
-from orchestration.orchestration_spec import WorkflowStage, TaskPriority, WorkflowExecution
+from orchestration_spec import WorkflowStage, TaskPriority, WorkflowExecution
 
 class DailyTradingWorkflow:
     """

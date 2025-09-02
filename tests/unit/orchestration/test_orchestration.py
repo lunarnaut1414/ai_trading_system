@@ -16,7 +16,7 @@ from typing import Dict, List, Any
 from orchestration.workflow_engine import WorkflowEngine
 from orchestration.daily_workflow import DailyTradingWorkflow
 from orchestration.orchestration_controller import OrchestrationController
-from orchestration.orchestration_spec import (
+from orchestration_spec import (
     WorkflowTask, WorkflowExecution, WorkflowStage, TaskStatus,
     TaskPriority, OrchestrationEvent
 )

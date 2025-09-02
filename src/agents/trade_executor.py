@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from enum import Enum
 import numpy as np
 
-from utils.base_agent import BaseAgent
-from src.data.alpaca_provider import AlpacaProvider
+from src.core.base_agent import BaseAgent
+from src.data_provider.alpaca_provider import AlpacaProvider
 
 # Define order enums locally or import from alpaca if available
 class OrderSide:
@@ -1400,8 +1400,8 @@ async def test_trade_execution_agent():
     """Test Trade Execution Agent functionality"""
     
     from config.settings import TradingConfig
-    from data.alpaca_provider import AlpacaProvider
-    from llm_providers.claude_llm_provider import ClaudeLLMProvider
+    from data_provider.alpaca_provider import AlpacaProvider
+    from src.core.llm_provider import ClaudeLLMProvider
     
     # Initialize components
     config = TradingConfig()

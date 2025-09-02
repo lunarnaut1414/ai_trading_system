@@ -30,7 +30,7 @@ from alpaca.trading.requests import (
 from alpaca.trading.enums import OrderSide, TimeInForce, OrderType, OrderStatus
 
 from config.settings import TradingConfig
-from utils.logging_helper import setup_logging
+from utils.logger import setup_logging
 
 class DataQuality:
     EXCELLENT = "excellent"

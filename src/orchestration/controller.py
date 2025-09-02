@@ -14,7 +14,7 @@ from datetime import datetime
 
 from orchestration.workflow_engine import WorkflowEngine
 from orchestration.daily_workflow import DailyTradingWorkflow
-from src.orchestration.orchestration_spec import OrchestrationEvent, TaskStatus
+from orchestration_spec import OrchestrationEvent, TaskStatus
 
 class OrchestrationController:
     """
@@ -99,7 +99,7 @@ class OrchestrationController:
         self.logger.info("🔄 Initializing data provider...")
         
         # Import and create Alpaca provider
-        from data.alpaca_provider import AlpacaDataProvider
+        from data_provider.alpaca_provider import AlpacaDataProvider
         
         self.data_provider = AlpacaDataProvider(self.config)
         await self.data_provider.initialize()
@@ -112,7 +112,7 @@ class OrchestrationController:
         self.logger.info("🔄 Initializing LLM provider...")
         
         # Import and create OpenAI provider
-        from llm_providers.claude_llm_provider import ClaudeLLMProvider
+        from src.core.llm_provider import ClaudeLLMProvider
         
         self.llm_provider = ClaudeLLMProvider(self.config)
         await self.llm_provider.initialize()

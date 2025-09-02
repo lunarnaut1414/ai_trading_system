@@ -1,4 +1,4 @@
-# tests/test_trade_execution_agent.py
+# tests/test_trade_executor.py
 """
 Comprehensive test suite for Trade Execution Agent
 
@@ -106,7 +106,7 @@ def order_manager(mock_alpaca_provider):
     return OrderManager(mock_alpaca_provider)
 
 @pytest.fixture
-def trade_execution_agent(mock_llm_provider, mock_alpaca_provider, mock_config):
+def trade_executor(mock_llm_provider, mock_alpaca_provider, mock_config):
     """Create TradeExecutionAgent instance"""
     return TradeExecutionAgent(mock_llm_provider, mock_alpaca_provider, mock_config)
 
@@ -213,7 +213,7 @@ class TestExecutionTimingEngine:
         assert len(result['execution_risks']) > 0  # Should have some risks identified
     
     @pytest.mark.asyncio
-    @patch('agents.trade_execution_agent.datetime')
+    @patch('src.agents.trade_executor.datetime')
     async def test_intraday_timing_patterns(self, mock_datetime, execution_timing_engine):
         """Test intraday timing patterns detection"""
         # Test opening volatility period
@@ -422,7 +422,7 @@ class TestOrderManager:
             'filled_qty': 0
         }
         
-        with patch('agents.trade_execution_agent.datetime') as mock_datetime:
+        with patch('src.agents.trade_executor.datetime') as mock_datetime:
             # Mock datetime to simulate timeout immediately
             start_time = datetime(2024, 1, 1, 10, 0, 0)
             timeout_time = datetime(2024, 1, 1, 10, 31, 0)
@@ -526,16 +526,16 @@ class TestTradeExecutionAgent:
     """Test suite for main TradeExecutionAgent"""
     
     @pytest.mark.asyncio
-    async def test_agent_initialization(self, trade_execution_agent):
+    async def test_agent_initialization(self, trade_executor):
         """Test agent initialization"""
-        assert trade_execution_agent.agent_name == "trade_execution"
-        assert trade_execution_agent.max_daily_trades == 50
-        assert trade_execution_agent.max_position_size == 0.05
-        assert trade_execution_agent.max_daily_turnover == 0.25
-        assert len(trade_execution_agent.daily_trades) == 0
+        assert trade_executor.agent_name == "trade_execution"
+        assert trade_executor.max_daily_trades == 50
+        assert trade_executor.max_position_size == 0.05
+        assert trade_executor.max_daily_turnover == 0.25
+        assert len(trade_executor.daily_trades) == 0
     
     @pytest.mark.asyncio
-    async def test_execute_single_trade_success(self, trade_execution_agent, mock_alpaca_provider):
+    async def test_execute_single_trade_success(self, trade_executor, mock_alpaca_provider):
         """Test successful single trade execution"""
         test_decision = {
             'symbol': 'AAPL',
@@ -546,7 +546,7 @@ class TestTradeExecutionAgent:
             'reasoning': 'Test trade'
         }
         
-        with patch.object(trade_execution_agent.order_manager, 'execute_trade_instruction',
+        with patch.object(trade_executor.order_manager, 'execute_trade_instruction',
                          new_callable=AsyncMock) as mock_execute:
             mock_execute.return_value = ExecutionResult(
                 instruction_id='test_id',
@@ -564,18 +564,18 @@ class TestTradeExecutionAgent:
                 execution_quality='good'
             )
             
-            result = await trade_execution_agent.execute_single_trade(test_decision)
+            result = await trade_executor.execute_single_trade(test_decision)
         
         assert result['status'] == 'success'
         assert 'execution_result' in result
         assert 'summary' in result
-        assert len(trade_execution_agent.daily_trades) == 1
+        assert len(trade_executor.daily_trades) == 1
     
     @pytest.mark.asyncio
-    async def test_execute_single_trade_daily_limit(self, trade_execution_agent):
+    async def test_execute_single_trade_daily_limit(self, trade_executor):
         """Test daily trade limit enforcement"""
         # Fill daily trades to limit
-        trade_execution_agent.daily_trades = [{'test': i} for i in range(50)]
+        trade_executor.daily_trades = [{'test': i} for i in range(50)]
         
         test_decision = {
             'symbol': 'AAPL',
@@ -584,13 +584,13 @@ class TestTradeExecutionAgent:
             'confidence': 8
         }
         
-        result = await trade_execution_agent.execute_single_trade(test_decision)
+        result = await trade_executor.execute_single_trade(test_decision)
         
         assert result['status'] == 'deferred'
         assert 'Daily trading limits reached' in result['message']
     
     @pytest.mark.asyncio
-    async def test_execute_portfolio_decisions(self, trade_execution_agent):
+    async def test_execute_portfolio_decisions(self, trade_executor):
         """Test batch portfolio decisions execution"""
         portfolio_decisions = [
             {
@@ -613,7 +613,7 @@ class TestTradeExecutionAgent:
             }
         ]
         
-        with patch.object(trade_execution_agent, 'execute_single_trade',
+        with patch.object(trade_executor, 'execute_single_trade',
                          new_callable=AsyncMock) as mock_execute:
             mock_execute.side_effect = [
                 {'status': 'success'},
@@ -623,7 +623,7 @@ class TestTradeExecutionAgent:
             
             # Mock asyncio.sleep to avoid waiting
             with patch('asyncio.sleep', new_callable=AsyncMock):
-                result = await trade_execution_agent.execute_portfolio_decisions(portfolio_decisions)
+                result = await trade_executor.execute_portfolio_decisions(portfolio_decisions)
         
         assert result['status'] == 'success'
         assert result['execution_summary']['total_decisions'] == 3
@@ -638,14 +638,14 @@ class TestTradeExecutionAgent:
         assert calls[2][0][0]['confidence'] == 5
     
     @pytest.mark.asyncio
-    async def test_monitor_active_executions(self, trade_execution_agent, mock_alpaca_provider):
+    async def test_monitor_active_executions(self, trade_executor, mock_alpaca_provider):
         """Test active execution monitoring"""
         mock_alpaca_provider.get_orders.return_value = [
             {'id': 'order1', 'created_at': datetime.now().isoformat()},
             {'id': 'order2', 'created_at': (datetime.now() - timedelta(hours=3)).isoformat()}
         ]
         
-        with patch.object(trade_execution_agent.order_manager, 'get_execution_performance',
+        with patch.object(trade_executor.order_manager, 'get_execution_performance',
                          new_callable=AsyncMock) as mock_performance:
             mock_performance.return_value = {
                 'total_executions': 10,
@@ -653,7 +653,7 @@ class TestTradeExecutionAgent:
                 'success_rate': 85
             }
             
-            result = await trade_execution_agent.monitor_active_executions()
+            result = await trade_executor.monitor_active_executions()
         
         assert result['status'] == 'success'
         assert result['active_orders'] == 2
@@ -666,10 +666,10 @@ class TestTradeExecutionAgent:
         assert 'low_success_rate' in alert_types
     
     @pytest.mark.asyncio
-    async def test_generate_execution_report(self, trade_execution_agent):
+    async def test_generate_execution_report(self, trade_executor):
         """Test execution report generation"""
         # Add sample trades
-        trade_execution_agent.daily_trades = [
+        trade_executor.daily_trades = [
             {
                 'timestamp': datetime.now().isoformat(),
                 'symbol': 'AAPL',
@@ -688,7 +688,7 @@ class TestTradeExecutionAgent:
             }
         ]
         
-        with patch.object(trade_execution_agent.order_manager, 'get_execution_performance',
+        with patch.object(trade_executor.order_manager, 'get_execution_performance',
                          new_callable=AsyncMock) as mock_performance:
             mock_performance.return_value = {
                 'total_executions': 2,
@@ -696,7 +696,7 @@ class TestTradeExecutionAgent:
                 'average_slippage_bps': 5
             }
             
-            result = await trade_execution_agent.generate_execution_report(period_days=1)
+            result = await trade_executor.generate_execution_report(period_days=1)
         
         assert result['status'] == 'success'
         assert result['report_period_days'] == 1
@@ -711,9 +711,9 @@ class TestTradeExecutionAgent:
         assert stats['total_commission'] == 2.00
     
     @pytest.mark.asyncio
-    async def test_create_execution_plan(self, trade_execution_agent, sample_trade_instruction):
+    async def test_create_execution_plan(self, trade_executor, sample_trade_instruction):
         """Test execution plan creation"""
-        plan = await trade_execution_agent._create_execution_plan(sample_trade_instruction)
+        plan = await trade_executor._create_execution_plan(sample_trade_instruction)
         
         assert isinstance(plan, ExecutionPlan)
         assert plan.instruction == sample_trade_instruction
@@ -723,7 +723,7 @@ class TestTradeExecutionAgent:
         assert plan.market_timing in ['excellent', 'good', 'fair', 'poor']
     
     @pytest.mark.asyncio
-    async def test_convert_decision_to_instruction(self, trade_execution_agent):
+    async def test_convert_decision_to_instruction(self, trade_executor):
         """Test decision to instruction conversion"""
         # High confidence -> HIGH urgency
         decision = {
@@ -732,34 +732,34 @@ class TestTradeExecutionAgent:
             'target_weight': 3.0,
             'confidence': 9
         }
-        instruction = trade_execution_agent._convert_decision_to_instruction(decision)
+        instruction = trade_executor._convert_decision_to_instruction(decision)
         assert instruction.urgency == ExecutionUrgency.HIGH
         
         # Medium confidence -> MEDIUM urgency
         decision['confidence'] = 6
-        instruction = trade_execution_agent._convert_decision_to_instruction(decision)
+        instruction = trade_executor._convert_decision_to_instruction(decision)
         assert instruction.urgency == ExecutionUrgency.MEDIUM
         
         # Low confidence -> LOW urgency
         decision['confidence'] = 3
-        instruction = trade_execution_agent._convert_decision_to_instruction(decision)
+        instruction = trade_executor._convert_decision_to_instruction(decision)
         assert instruction.urgency == ExecutionUrgency.LOW
     
-    def test_check_daily_limits(self, trade_execution_agent):
+    def test_check_daily_limits(self, trade_executor):
         """Test daily trading limits checking"""
         # Initially should allow trades
-        assert trade_execution_agent._check_daily_limits() is True
+        assert trade_executor._check_daily_limits() is True
         
         # Exceed trade count limit
-        trade_execution_agent.daily_trades = [{'test': i} for i in range(50)]
-        assert trade_execution_agent._check_daily_limits() is False
+        trade_executor.daily_trades = [{'test': i} for i in range(50)]
+        assert trade_executor._check_daily_limits() is False
         
         # Reset and test turnover limit
-        trade_execution_agent.daily_trades = []
-        trade_execution_agent.daily_volume = 250001  # > 25% of 1M
-        assert trade_execution_agent._check_daily_limits() is False
+        trade_executor.daily_trades = []
+        trade_executor.daily_volume = 250001  # > 25% of 1M
+        assert trade_executor._check_daily_limits() is False
     
-    def test_track_daily_execution(self, trade_execution_agent):
+    def test_track_daily_execution(self, trade_executor):
         """Test daily execution tracking"""
         result = ExecutionResult(
             instruction_id='test',
@@ -777,13 +777,13 @@ class TestTradeExecutionAgent:
             execution_quality='good'
         )
         
-        trade_execution_agent._track_daily_execution(result)
+        trade_executor._track_daily_execution(result)
         
-        assert len(trade_execution_agent.daily_trades) == 1
-        assert trade_execution_agent.daily_volume == 15000
-        assert trade_execution_agent.daily_commission == 1.00
+        assert len(trade_executor.daily_trades) == 1
+        assert trade_executor.daily_volume == 15000
+        assert trade_executor.daily_commission == 1.00
     
-    def test_check_execution_alerts(self, trade_execution_agent):
+    def test_check_execution_alerts(self, trade_executor):
         """Test execution alert generation"""
         active_orders = [
             {'id': 'order1', 'created_at': (datetime.now() - timedelta(hours=3)).isoformat()}
@@ -794,7 +794,7 @@ class TestTradeExecutionAgent:
             'success_rate': 85
         }
         
-        alerts = trade_execution_agent._check_execution_alerts(active_orders, performance)
+        alerts = trade_executor._check_execution_alerts(active_orders, performance)
         
         assert len(alerts) == 3
         alert_types = [alert['type'] for alert in alerts]
@@ -803,32 +803,32 @@ class TestTradeExecutionAgent:
         assert 'low_success_rate' in alert_types
     
     @pytest.mark.asyncio
-    async def test_process_method_routing(self, trade_execution_agent):
+    async def test_process_method_routing(self, trade_executor):
         """Test main process method routing"""
         # Test execute_trade
-        with patch.object(trade_execution_agent, 'execute_single_trade',
+        with patch.object(trade_executor, 'execute_single_trade',
                          new_callable=AsyncMock) as mock_execute:
             mock_execute.return_value = {'status': 'success'}
             
-            result = await trade_execution_agent.process({
+            result = await trade_executor.process({
                 'task_type': 'execute_trade',
                 'trade_instruction': {'symbol': 'AAPL'}
             })
             mock_execute.assert_called_once()
         
         # Test execute_portfolio_decisions
-        with patch.object(trade_execution_agent, 'execute_portfolio_decisions',
+        with patch.object(trade_executor, 'execute_portfolio_decisions',
                          new_callable=AsyncMock) as mock_portfolio:
             mock_portfolio.return_value = {'status': 'success'}
             
-            result = await trade_execution_agent.process({
+            result = await trade_executor.process({
                 'task_type': 'execute_portfolio_decisions',
                 'portfolio_decisions': []
             })
             mock_portfolio.assert_called_once()
         
         # Test unknown task type
-        result = await trade_execution_agent.process({'task_type': 'unknown'})
+        result = await trade_executor.process({'task_type': 'unknown'})
         assert result['status'] == 'error'
         assert 'Unknown task type' in result['message']
 
@@ -839,7 +839,7 @@ class TestIntegration:
     
     @pytest.mark.asyncio
     @pytest.mark.timeout(5)  # Add timeout to prevent hanging
-    async def test_complete_execution_flow(self, trade_execution_agent, mock_alpaca_provider):
+    async def test_complete_execution_flow(self, trade_executor, mock_alpaca_provider):
         """Test complete execution flow from decision to result"""
         portfolio_decision = {
             'symbol': 'AAPL',
@@ -872,7 +872,7 @@ class TestIntegration:
         })
         
         # Mock timing engine to avoid delays
-        with patch.object(trade_execution_agent.timing_engine, 'assess_market_timing',
+        with patch.object(trade_executor.timing_engine, 'assess_market_timing',
                          new_callable=AsyncMock) as mock_timing:
             mock_timing.return_value = {
                 'timing_score': 7,
@@ -887,7 +887,7 @@ class TestIntegration:
             
             # Mock asyncio.sleep to avoid delays
             with patch('asyncio.sleep', new_callable=AsyncMock):
-                result = await trade_execution_agent.execute_single_trade(portfolio_decision)
+                result = await trade_executor.execute_single_trade(portfolio_decision)
         
         assert result['status'] == 'success'
         assert 'execution_result' in result
@@ -896,7 +896,7 @@ class TestIntegration:
         assert result['execution_result'].symbol == 'AAPL'
     
     @pytest.mark.asyncio
-    async def test_failed_execution_recovery(self, trade_execution_agent, mock_alpaca_provider):
+    async def test_failed_execution_recovery(self, trade_executor, mock_alpaca_provider):
         """Test handling of failed executions"""
         mock_alpaca_provider.place_order.return_value = {
             'success': False,
@@ -911,12 +911,12 @@ class TestIntegration:
         }
         
         # Mock the order manager to ensure it doesn't hang
-        with patch.object(trade_execution_agent.order_manager, 'execute_trade_instruction',
+        with patch.object(trade_executor.order_manager, 'execute_trade_instruction',
                          new_callable=AsyncMock) as mock_execute:
             # Simulate an execution failure
             mock_execute.side_effect = Exception("Insufficient buying power")
             
-            result = await trade_execution_agent.execute_single_trade(portfolio_decision)
+            result = await trade_executor.execute_single_trade(portfolio_decision)
         
         assert result['status'] == 'error'
         assert 'Insufficient buying power' in result['message']
@@ -1036,7 +1036,7 @@ class TestEdgeCases:
         assert result['filled_qty'] == 100
     
     @pytest.mark.asyncio
-    async def test_invalid_symbol_handling(self, trade_execution_agent):
+    async def test_invalid_symbol_handling(self, trade_executor):
         """Test handling of invalid symbols"""
         decision = {
             'symbol': '',  # Empty symbol
@@ -1046,9 +1046,9 @@ class TestEdgeCases:
         }
         
         # Mock the order manager to prevent actual execution
-        with patch.object(trade_execution_agent.order_manager, 'execute_trade_instruction',
+        with patch.object(trade_executor.order_manager, 'execute_trade_instruction',
                          new_callable=AsyncMock) as mock_execute:
-            result = await trade_execution_agent.execute_single_trade(decision)
+            result = await trade_executor.execute_single_trade(decision)
         
         assert result['status'] == 'error'
         assert 'Invalid trade decision' in result['message']
@@ -1080,4 +1080,4 @@ class TestEdgeCases:
 # ==================== RUN ALL TESTS ====================
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--cov=agents.trade_execution_agent", "--cov-report=term-missing"])
+    pytest.main([__file__, "-v", "--cov=agents.trade_executor", "--cov-report=term-missing"])

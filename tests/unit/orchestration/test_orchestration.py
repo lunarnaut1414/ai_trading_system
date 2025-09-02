@@ -13,10 +13,10 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock, call
 from typing import Dict, List, Any
 
 # Import from actual git repository structure
-from orchestration.workflow_engine import WorkflowEngine
-from orchestration.daily_workflow import DailyTradingWorkflow
-from orchestration.orchestration_controller import OrchestrationController
-from orchestration_spec import (
+from src.orchestration.workflow_engine import WorkflowEngine
+from src.orchestration.daily_workflow import DailyTradingWorkflow
+from src.orchestration.controller import OrchestrationController
+from src.orchestration.spec import (
     WorkflowTask, WorkflowExecution, WorkflowStage, TaskStatus,
     TaskPriority, OrchestrationEvent
 )
@@ -482,7 +482,7 @@ class TestDailyTradingWorkflow:
         mock_engine = Mock()
         workflow = DailyTradingWorkflow(mock_engine, mock_config)
         
-        with patch('orchestration.daily_workflow.datetime') as mock_datetime:
+        with patch('src.orchestration.daily_workflow.datetime') as mock_datetime:
             saturday_date = Mock()
             saturday_date.weekday.return_value = 5  # Saturday
             saturday_date.date.return_value = saturday_date
@@ -516,7 +516,7 @@ class TestDailyTradingWorkflow:
         
         workflow = DailyTradingWorkflow(mock_engine, mock_config)
         
-        with patch('orchestration.daily_workflow.datetime') as mock_datetime:
+        with patch('src.orchestration.daily_workflow.datetime') as mock_datetime:
             tuesday_date = Mock()
             tuesday_date.weekday.return_value = 1  # Tuesday
             tuesday_date.date.return_value = tuesday_date
@@ -814,7 +814,7 @@ class TestOrchestrationIntegration:
         
         await controller._setup_event_handlers()
         
-        with patch('orchestration.daily_workflow.datetime') as mock_datetime:
+        with patch('src.orchestration.daily_workflow.datetime') as mock_datetime:
             tuesday = Mock()
             tuesday.weekday.return_value = 1
             tuesday.date.return_value = tuesday

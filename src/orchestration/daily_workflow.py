@@ -10,8 +10,8 @@ import logging
 from typing import Dict, Optional, Any
 from datetime import datetime, time
 
-from orchestration.workflow_engine import WorkflowEngine
-from orchestration_spec import WorkflowStage, TaskPriority, WorkflowExecution
+from src.orchestration.workflow_engine import WorkflowEngine
+from src.orchestration.spec import WorkflowStage, TaskPriority, WorkflowExecution
 
 class DailyTradingWorkflow:
     """

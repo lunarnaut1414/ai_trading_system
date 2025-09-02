@@ -15,8 +15,8 @@ import asyncio
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.claude_llm_provider import ClaudeLLMProvider, LLMResponse
-from config.claude_config import ClaudeConfig
+from src.llm_providers.claude_llm_provider import ClaudeLLMProvider, LLMResponse
+from src.llm_providers.claude_config import ClaudeConfig
 
 # Skip all tests if API key is not configured
 pytestmark = pytest.mark.skipif(

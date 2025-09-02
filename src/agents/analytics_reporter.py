@@ -18,7 +18,7 @@ from decimal import Decimal
 from pathlib import Path
 import numpy as np  # Added numpy import
 
-from utils.base_agent import BaseAgent
+from src.core.base_agent import BaseAgent
 
 # Try to import optional dependencies
 try:

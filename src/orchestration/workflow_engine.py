@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Callable
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
-from orchestration_spec import (
+from src.orchestration.spec import (
     WorkflowTask, WorkflowExecution, WorkflowStage, TaskStatus, 
     TaskPriority, OrchestrationEvent
 )

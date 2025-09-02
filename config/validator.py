@@ -7,7 +7,68 @@ import sys
 import os
 import asyncio
 from typing import List, Tuple, Any
-from config.settings import TradingConfig
+from pathlib import Path
+
+# Fix import path - add project root to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Load environment variables first
+try:
+    from dotenv import load_dotenv
+    
+    # Try to find and load .env file
+    env_file = project_root / '.env'
+    if env_file.exists():
+        load_dotenv(env_file)
+        print(f"✅ Loaded .env from: {env_file}")
+    else:
+        print(f"⚠️ No .env file found at {env_file}")
+        
+except ImportError:
+    print("⚠️ python-dotenv not installed")
+
+# Now import config after environment is loaded
+try:
+    from config.settings import TradingConfig
+except ImportError as e:
+    print(f"❌ Could not import TradingConfig: {e}")
+    print(f"Creating minimal config from environment variables...")
+    
+    # Fallback: Create a minimal config class
+    class TradingConfig:
+        def __init__(self):
+            # API Configuration
+            self.ALPACA_API_KEY = os.getenv('ALPACA_API_KEY', '')
+            self.ALPACA_SECRET_KEY = os.getenv('ALPACA_SECRET_KEY', '')
+            self.ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
+            
+            # Trading Parameters
+            self.MAX_POSITIONS = int(os.getenv('MAX_POSITIONS', '10'))
+            self.MAX_POSITION_SIZE = float(os.getenv('MAX_POSITION_SIZE', '0.05'))
+            self.MAX_SECTOR_EXPOSURE = float(os.getenv('MAX_SECTOR_EXPOSURE', '0.25'))
+            self.DAILY_LOSS_LIMIT = float(os.getenv('DAILY_LOSS_LIMIT', '0.02'))
+            self.MIN_CASH_RESERVE = float(os.getenv('MIN_CASH_RESERVE', '0.10'))
+            self.RISK_TOLERANCE = os.getenv('RISK_TOLERANCE', 'moderate')
+            
+            # Notification Settings
+            self.NOTIFICATION_PROVIDER = os.getenv('NOTIFICATION_PROVIDER', 'disabled')
+            self.ENABLE_NOTIFICATIONS = os.getenv('ENABLE_NOTIFICATIONS', 'false').lower() == 'true'
+            self.BLUESKY_HANDLE = os.getenv('BLUESKY_HANDLE', '')
+            self.BLUESKY_APP_PASSWORD = os.getenv('BLUESKY_APP_PASSWORD', '')
+            self.SMTP_USERNAME = os.getenv('SMTP_USERNAME', '')
+            self.SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+            self.WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
+            
+        def get_trading_params(self):
+            return {
+                'max_positions': self.MAX_POSITIONS,
+                'max_position_size': self.MAX_POSITION_SIZE,
+                'max_sector_exposure': self.MAX_SECTOR_EXPOSURE,
+                'daily_loss_limit': self.DAILY_LOSS_LIMIT,
+                'min_cash_reserve': self.MIN_CASH_RESERVE,
+                'risk_tolerance': self.RISK_TOLERANCE
+            }
 
 class ConfigurationValidator:
     """Validates system configuration and dependencies"""
@@ -49,7 +110,6 @@ class ConfigurationValidator:
                 validation_results.append((description, False, "❌ Missing"))
         
         # ===== API CREDENTIALS =====
-        # ===== API CREDENTIALS =====
         credential_checks = [
             ("Alpaca API Key", bool(self.config.ALPACA_API_KEY), "Required for trading"),
             ("Alpaca Secret", bool(self.config.ALPACA_SECRET_KEY), "Required for trading"),
@@ -59,27 +119,35 @@ class ConfigurationValidator:
         validation_results.extend(credential_checks)
         
         # ===== NOTIFICATION SETTINGS =====
+        notification_provider = getattr(self.config, 'NOTIFICATION_PROVIDER', 'disabled')
+        enable_notifications = getattr(self.config, 'ENABLE_NOTIFICATIONS', False)
+        
         notification_checks = [
-            ("Notification Config", True, f"Provider: {self.config.NOTIFICATION_PROVIDER}"),
+            ("Notification Config", True, f"Provider: {notification_provider}"),
         ]
         
-        if self.config.ENABLE_NOTIFICATIONS and self.config.NOTIFICATION_PROVIDER != "disabled":
-            if self.config.NOTIFICATION_PROVIDER == "bluesky":
+        if enable_notifications and notification_provider != "disabled":
+            if notification_provider == "bluesky":
+                bluesky_handle = getattr(self.config, 'BLUESKY_HANDLE', '')
+                bluesky_password = getattr(self.config, 'BLUESKY_APP_PASSWORD', '')
                 notification_checks.append((
                     "BlueSky Credentials", 
-                    bool(self.config.BLUESKY_HANDLE and self.config.BLUESKY_APP_PASSWORD),
+                    bool(bluesky_handle and bluesky_password),
                     "Required for BlueSky notifications"
                 ))
-            elif self.config.NOTIFICATION_PROVIDER == "email":
+            elif notification_provider == "email":
+                smtp_username = getattr(self.config, 'SMTP_USERNAME', '')
+                smtp_password = getattr(self.config, 'SMTP_PASSWORD', '')
                 notification_checks.append((
                     "Email Credentials",
-                    bool(self.config.SMTP_USERNAME and self.config.SMTP_PASSWORD),
+                    bool(smtp_username and smtp_password),
                     "Required for email notifications"
                 ))
-            elif self.config.NOTIFICATION_PROVIDER == "webhook":
+            elif notification_provider == "webhook":
+                webhook_url = getattr(self.config, 'WEBHOOK_URL', '')
                 notification_checks.append((
                     "Webhook URL",
-                    bool(self.config.WEBHOOK_URL),
+                    bool(webhook_url),
                     "Required for webhook notifications"
                 ))
         
@@ -122,21 +190,71 @@ class ConfigurationValidator:
         # ===== NOTIFICATION STATUS =====
         print(f"\n📱 Notification Settings:")
         print("-" * 30)
-        print(f"Provider:          {self.config.NOTIFICATION_PROVIDER}")
-        print(f"Enabled:           {self.config.ENABLE_NOTIFICATIONS}")
-        if self.config.NOTIFICATION_PROVIDER == "bluesky" and self.config.BLUESKY_HANDLE:
-            print(f"BlueSky Handle:    {self.config.BLUESKY_HANDLE}")
-        elif self.config.NOTIFICATION_PROVIDER == "email" and self.config.SMTP_USERNAME:
-            print(f"Email:             {self.config.SMTP_USERNAME}")
-        elif self.config.NOTIFICATION_PROVIDER == "webhook" and self.config.WEBHOOK_URL:
-            print(f"Webhook:           {self.config.WEBHOOK_URL}")
+        notification_provider = getattr(self.config, 'NOTIFICATION_PROVIDER', 'disabled')
+        enable_notifications = getattr(self.config, 'ENABLE_NOTIFICATIONS', False)
+        
+        print(f"Provider:          {notification_provider}")
+        print(f"Enabled:           {enable_notifications}")
+        
+        if notification_provider == "bluesky":
+            bluesky_handle = getattr(self.config, 'BLUESKY_HANDLE', '')
+            if bluesky_handle:
+                print(f"BlueSky Handle:    {bluesky_handle}")
+        elif notification_provider == "email":
+            smtp_username = getattr(self.config, 'SMTP_USERNAME', '')
+            if smtp_username:
+                print(f"Email:             {smtp_username}")
+        elif notification_provider == "webhook":
+            webhook_url = getattr(self.config, 'WEBHOOK_URL', '')
+            if webhook_url:
+                print(f"Webhook:           {webhook_url}")
         else:
             print(f"Status:            Disabled - Ready for future development")
+        
+        # ===== ENVIRONMENT FILE CHECK =====
+        print(f"\n📄 Environment File Status:")
+        print("-" * 30)
+        env_file = project_root / '.env'
+        if env_file.exists():
+            print(f"✅ .env file found: {env_file}")
+            # Check if key variables are in the file
+            try:
+                with open(env_file, 'r') as f:
+                    content = f.read()
+                    if 'ANTHROPIC_API_KEY' in content:
+                        print("✅ ANTHROPIC_API_KEY present in .env file")
+                    else:
+                        print("❌ ANTHROPIC_API_KEY not found in .env file")
+            except Exception as e:
+                print(f"⚠️ Could not read .env file: {e}")
+        else:
+            print(f"❌ No .env file found at {env_file}")
+            print(f"💡 Create .env file with your API keys")
+        
+        # ===== API KEY VERIFICATION =====
+        print(f"\n🔑 API Key Status:")
+        print("-" * 30)
+        
+        # Direct environment check
+        anthropic_key_env = os.getenv('ANTHROPIC_API_KEY')
+        anthropic_key_config = self.config.ANTHROPIC_API_KEY
+        
+        if anthropic_key_env:
+            print(f"✅ ANTHROPIC_API_KEY in environment (length: {len(anthropic_key_env)})")
+        else:
+            print(f"❌ ANTHROPIC_API_KEY not in environment")
+            
+        if anthropic_key_config:
+            print(f"✅ ANTHROPIC_API_KEY in config (length: {len(anthropic_key_config)})")
+        else:
+            print(f"❌ ANTHROPIC_API_KEY not in config")
         
         # ===== FINAL STATUS =====
         if all_passed:
             print(f"\n🎉 Environment validation successful!")
             print(f"✅ Ready to proceed to Core Infrastructure setup")
+            print(f"✅ Ready to run tests:")
+            print(f"   pytest tests/unit/llm_provider/test_claude_llm_provider.py -v")
             return True
         else:
             print(f"\n❌ Environment validation failed!")
@@ -150,5 +268,9 @@ def validate_environment() -> bool:
     return validator.validate_environment()
 
 if __name__ == "__main__":
+    print(f"🏗️ Project root: {project_root}")
+    print(f"🐍 Python path: {sys.path[0]}")
+    print()
+    
     success = validate_environment()
     sys.exit(0 if success else 1)
